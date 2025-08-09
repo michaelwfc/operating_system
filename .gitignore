@@ -1,3 +1,11 @@
+# Ignore all files without extensions
+*
+# But don't ignore directories
+!*/
+# And don't ignore files with extensions
+!*.*
+
+xv6-riscv/
 # Prerequisites
 *.d
 

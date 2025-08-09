@@ -9,6 +9,16 @@ The job of an operating system is to share a computer among multiple programs an
 - An operating system **shares the hardware** among multiple programs so that they run (or appear to run) at the same time. Finally, 
 - operating systems provide **controlled ways for programs to interact**, so that they can share data or work together.
 
+## What is the purpose of an OS?
+1. Abstraction
+• Hides hardware details for portability and convenience
+• Must not get in the way of high performance
+• Must support a wide range of applications
+2. Multiplexing
+• Allows multiple applications to share hardware
+• Isolation to contain bugs and provide security
+• Sharing to allow cooperation
+
 ## Operating system interfaces
 
 An operating system provides services to user programs through an interface. 
@@ -22,7 +32,7 @@ The collection of system calls that a kernel provides is the interface that user
 - This interface has been so successful that modern operating systems—BSD, Linux, macOS, Solaris, and even, to a lesser extent, Microsoft Windows—have Unix-like interfaces.
 
 
-### Kernel Space - System Call - User Space
+### Kernel Space - User Space
 ![image](../images/Figure%201.1-A%20kernel%20and%20two%20user%20processes.png)
 
 Kernel: a special program that provides services to running programs.
@@ -40,7 +50,42 @@ System Call: When a process needs to invoke **a kernel service**, it invokes a s
 
   - The kernel executes with the hardware privileges required to implement these protections; user programs execute without those privileges. When a user program invokes a system call, the hardware raises the privilege level and starts executing a pre-arranged function in the kernel.
 
+### System Call(Xv6)
+Figure 1.2: Xv6 system calls. If not otherwise stated, these calls return 0 for no error, and -1 if
+there’s an error.
 
+| System Call | Description |
+|-------------|-------------|
+| `int fork()` | Create a process, return child's PID. |
+| `int exit(int status)` | Terminate the current process; status reported to [wait()](file:///mnt/e/projects/operating_system/xv6-riscv/user/user.h#L5-L5). No return. |
+| `int wait(int *status)` | Wait for a child to exit; exit status in `*status`; returns child PID. |
+| `int kill(int pid)` | Terminate process PID. Returns 0, or -1 for error. |
+| `int getpid()` | Return the current process's PID. |
+| `int sleep(int n)` | Pause for n clock ticks. |
+| `int exec(char *file, char *argv[])` | Load a file and execute it with arguments; only returns if error. |
+| `char *sbrk(int n)` | Grow process's memory by n bytes. Returns start of new memory. |
+| `int open(char *file, int flags)` | Open a file; flags indicate read/write; returns an fd (file descriptor). |
+| `int write(int fd, char *buf, int n)` | Write n bytes from buf to file descriptor fd; returns n. |
+| `int read(int fd, char *buf, int n)` | Read n bytes into buf; returns number read; or 0 if end of file. |
+| `int close(int fd)` | Release open file fd. |
+| `int dup(int fd)` | Return a new file descriptor referring to the same file as fd. |
+| `int pipe(int p[])` | Create a pipe, put read/write file descriptors in p[0] and p[1]. |
+| `int chdir(char *dir)` | Change the current directory. |
+| `int mkdir(char *dir)` | Create a new directory. |
+| `int mknod(char *file, int, int)` | Create a device file. |
+| `int fstat(int fd, struct stat *st)` | Place info about an open file into [*st](file:///mnt/e/projects/operating_system/xv6-riscv/user/_forktest). |
+| `int stat(char *file, struct stat *st)` | Place info about a named file into [*st](file:///mnt/e/projects/operating_system/xv6-riscv/user/_forktest). |
+| `int link(char *file1, char *file2)` | Create another name (file2) for the file file1. |
+| `int unlink(char *file)` | Remove a file. |
+
+
+## OS abstractions
+• Process (a running program)
+• Memory allocation
+• File descriptors
+• File names and directories
+• Access control and quotas
+• Many others: users, IPC, network sockets, time, etc.
 
 
 # 1.1 Processes and memory

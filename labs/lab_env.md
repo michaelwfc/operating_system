@@ -1,6 +1,6 @@
-# Tools Used in 6.S081
 
-- https://pdos.csail.mit.edu/6.828/2021/tools.html
+# References 
+- Tools Used in 6.S081 : https://pdos.csail.mit.edu/6.828/2021/tools.html
   
 
 For this class you'll need the RISC-V versions of a couple different tools: QEMU 5.1+, GDB 8.3+, GCC, and Binutils.
@@ -22,7 +22,7 @@ QEMU (Quick Emulator) is a powerful, open-source machine emulator and virtualize
 - Snapshot VM state
 
 
-## Installing on Windows
+## Installing on Windows wsl
 
 First make sure you have the Windows Subsystem for Linux installed. Then add Ubuntu 20.04 from the Microsoft Store. Afterwards you should be able to launch Ubuntu and interact with the machine. To install all the software you need for this class, run:
 
@@ -89,6 +89,7 @@ riscv64-linux-gnu-gcc --version
 # riscv64-linux-gnu-gcc (Debian 10.3.0-8) 10.3.0
 
 
+git clone https://github.com/mit-pdos/xv6-riscv.git
 
 # To test your installation, you should be able to compile and run xv6 (to quit qemu type Ctrl-a x):
 cd xv6-riscv
@@ -109,3 +110,7 @@ usertests
 # Ctrl + a  然后按 x
 
 ```
+
+
+
+

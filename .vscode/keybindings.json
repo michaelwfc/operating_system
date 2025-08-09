@@ -1,0 +1,25 @@
+// Place your key bindings in this file to override the defaults
+// Ctrl +K, Ctrl +S
+[
+  {
+    "key": "ctrl+shift+u",
+    "command": "editor.action.transformToUppercase",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+l",
+    "command": "editor.action.transformToLowercase",
+    "when": "editorTextFocus"
+  },
+  {
+    // Navigate to Top of Call Stack
+    "key": "alt+f10",
+    "command": "workbench.action.debug.callStackTop"
+  },
+  //Debug: Evaluate
+  {
+    "key": "shift+alt+e",
+    "command": "editor.debug.action.selectionToRepl"
+  }
+
+]

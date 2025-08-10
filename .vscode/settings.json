@@ -49,7 +49,17 @@
     "curl.h": "c",
     "in.h": "c",
     "types.h": "c",
-    "user.h": "c"
+    "user.h": "c",
+    "stat.h": "c",
+    "fcntl.h": "c",
+    "syscall.h": "c",
+    "exception": "c",
+    "memory_resource": "c",
+    "iosfwd": "c",
+    "new": "c",
+    "ostream": "c",
+    "stop_token": "c",
+    "streambuf": "c"
   },
   "C_Cpp.default.compilerPath": "/usr/bin/gcc"
 }

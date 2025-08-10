@@ -5,7 +5,9 @@
 # And don't ignore files with extensions
 !*.*
 
-xv6-riscv/
+# xv6-riscv/
+# labs code
+MIT6.S081-2020fall/
 # Prerequisites
 *.d
 

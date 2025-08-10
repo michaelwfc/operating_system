@@ -18,21 +18,29 @@ main(int argc, char *argv[])
 
     int pid = fork(); 
     if(pid==0){
-        close(p1[1]);
-        // child process
+        // Close unused ends
+        close(p1[1]);  // child doesn't write to p1
+        close(p2[0]);  // child doesn't read from p2
+
+        // child process Read one byte from parent from p1 read end
         char byteBuffer[1];
         read(p1[0], byteBuffer, 1);
         printf("%d: received ping\n");
         // printf("%d: received ping from parent: %c\n", getpid(), byteBuffer[0]);
         close(p1[0]); 
-        write(p2[1], "c", 1); // write a byte to pipe write end
-        close(p2[1]);
+
+        write(p2[1], "c", 1); // write a byte to pipe 2 write end
+        close(p2[1]);         // close pipe 2 write end then send EOF single
         exit(0);
     }else if(pid>0){
-        close(p2[1]);
-        // parent process
-        write(p1[1], "p", 1); // write a byte to pipe write end
+        // close unused ends
+        close(p1[0]); // parent doesn't need pipe 1 read end
+        close(p2[1]); // parent doesn't need pipe 2 write end
+
+        // parent process write a byte to pipe 1 write end
+        write(p1[1], "p", 1); 
         close(p1[1]); // close the pipe write end and send EOF signal
+        
         // waited for the child to finish
         char byteBuffer[1];
         read(p2[0], byteBuffer, 1);

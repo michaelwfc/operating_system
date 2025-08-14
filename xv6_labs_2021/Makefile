@@ -138,6 +138,7 @@ UPROGS=\
 	$U/_sleep\
 	$U/_pingpong\
 	$U/_primes\
+	$U/_find\
 	$U/_cat\
 	$U/_echo\
 	$U/_forktest\

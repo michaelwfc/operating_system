@@ -12,12 +12,12 @@ fmtname(char *path)
   // Find first character after last slash.
   for(p=path+strlen(path); p >= path && *p != '/'; p--)
     ;
-  p++;
+  p++; // Moves to the first character after /.
 
   // Return blank-padded name.
   if(strlen(p) >= DIRSIZ)
     return p;
-  memmove(buf, p, strlen(p));
+  memmove(buf, p, strlen(p)); //Otherwise, copy it into a static buffer and pad with spaces until it’s exactly DIRSIZ.
   memset(buf+strlen(p), ' ', DIRSIZ-strlen(p));
   return buf;
 }
@@ -30,7 +30,7 @@ ls(char *path)
   struct dirent de;
   struct stat st;
 
-  if((fd = open(path, 0)) < 0){
+  if((fd = open(path, 0)) < 0){ // Opens the given path in read-only mode.
     fprintf(2, "ls: cannot open %s\n", path);
     return;
   }
@@ -54,11 +54,11 @@ ls(char *path)
     strcpy(buf, path);
     p = buf+strlen(buf);
     *p++ = '/';
-    while(read(fd, &de, sizeof(de)) == sizeof(de)){
-      if(de.inum == 0)
+    while(read(fd, &de, sizeof(de)) == sizeof(de)){ // Reads each fixed-size directory entry (struct dirent).
+      if(de.inum == 0) // empty entry
         continue;
-      memmove(p, de.name, DIRSIZ);
-      p[DIRSIZ] = 0;
+      memmove(p, de.name, DIRSIZ);  // Copies the name into the buffer after "dirpath/".
+      p[DIRSIZ] = 0;    // null terminate
       if(stat(buf, &st) < 0){
         printf("ls: cannot stat %s\n", buf);
         continue;

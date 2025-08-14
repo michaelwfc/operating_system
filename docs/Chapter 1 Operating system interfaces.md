@@ -144,8 +144,7 @@ The read and write system calls read bytes from and write bytes to open files na
 ###  read(fd, buf, n)
 The call read(fd, buf, n) reads at most n bytes from the file descriptor fd, copies them into buf, and returns the number of bytes read. Each file escriptor that refers to a file has an offset associated with it. 
 Read reads data from the current file offset and then advances that offset by the number of bytes read: a subsequent read will return the bytes following the ones returned by the first read. 
-When there are no more bytes to read, read returns zero to indicate the end of
-the file.
+When there are no more bytes to read, read returns zero to indicate the end of the file.
 
 ### write(fd, buf, n)
 The call write(fd, buf, n) writes n bytes from buf to the file descriptor fd and returns the number of bytes written. Fewer than n bytes are written only when an error occurs. Like read,write writes data at the current file offset and then advances that offset by the number of bytes
@@ -196,9 +195,7 @@ File descriptors and fork interact to make I/O redirection easy to implement. Fo
 
 ### dup
 
-The dup system call duplicates an existing file descriptor, returning a new one that refers to
-the same underlying I/O object. Both file descriptors share an offset, just as the file descriptors
-duplicated by fork do.
+The dup system call duplicates an existing file descriptor, returning a new one that refers to the same underlying I/O object. Both file descriptors share an offset, just as the file descriptors duplicated by fork do.
 
 # 1.3 Pipes
 
@@ -209,10 +206,72 @@ the other end of the pipe. Pipes provide a way for processes to communicate.
 # 1.4 File system
 
 ## File system
-- data files: which contain uninterpreted byte arrays
-- directories: which contain named references to data files and other directories.
-- device
 
+1. data files: which contain uninterpreted byte arrays
+2. directories: which contain named references to data files and other directories.
+3. device
+
+```C
+// kernel/stat.h
+#define T_DIR     1   // Directory
+#define T_FILE    2   // File
+#define T_DEVICE  3   // Device
+
+struct stat {
+  int dev;     // File system's disk device
+  uint ino;    // Inode number
+  short type;  // Type of file
+  short nlink; // Number of links to file
+  uint64 size; // Size of file in bytes
+};
+
+
+```
+
+### 1. data files
+-  A file’s name is distinct from the file itself; 
+-  inode: the same underlying file, called an inode
+-  links: the same underlying file can have multiple names, called links. 
+-  Each link consists of an entry in a directory; the entry contains a file name and a reference to an inode. 
+-  An inode holds metadata about a file, including its type (file or  directory or device), its length, the location of the file’s content on disk, and the number of links to  a file.
+
+
+### 2. device
+mknod creates a special file that refers to a device. 
+Associated with a device file are the major and minor device numbers (the two arguments to mknod), which uniquely identify a kernel device.
+
+
+### 3. directory
+
+A directory is just a file containing an array of struct dirent:
+- name is just the bare filename (e.g., "etc", "README", "file1").
+- No \0 terminator if the name exactly fills 14 chars.
+- Absolutely no / stored in the entry — / is only used when userspace code constructs a path string.
+- / is a path separator in Unix-like systems — it’s not part of a name.
+- Keeping it out of struct dirent means: Names are consistent whether file or directory.
+
+```C
+struct dirent {
+  ushort inum;
+  char name[DIRSIZ]; // filename, up to 14 chars, no '/'
+};
+
+```
+
+If name is shorter than 14 chars:
+- xv6 pads the remaining bytes with \0 (null characters) when writing it.
+- This makes it fixed-size (easier for disk read/write).
+
+
+#### Example:
+
+If you ls /:
+- Path / (root) contains entries: ".", "..", "README", "bin", etc.
+- None of these stored as "bin/" on disk — "bin/" is just a printing convention in ls to show it's a directory.
+
+## System Calls
+
+### open & mknod
 ```C
 // mkdir creates a new directory
 mkdir("/dir");
@@ -220,43 +279,28 @@ mkdir("/dir");
 // open with the O_CREATE flag creates a new data file, 
 fd = open("/dir/file", O_CREATE|O_WRONLY);
 close(fd);
+
 //  mknod creates a new device file.
 mknod("/console", 1, 1);
-
 ```
 
-### data files
--  A file’s name is distinct from the file itself; 
--  inode: the same underlying file, called an inode
--  links: the same underlying file can have multiple names, called links. Each link consists of an entry in a directory; 
-- the entry contains a file name and a reference to an inode. 
-- An inode holds metadata about a file, including its type (file or  directory or device), its length, the location of the file’s content on disk, and the number of links to   a file.
+### fstat
 
-
-### device
-Mknod creates a special file that refers to a device. Associated with a device file are the major and
-minor device numbers (the two arguments to mknod), which uniquely identify a kernel device.
-
-
-## The fstat system call
-
-The fstat system call retrieves information from the inode that a file descriptor refers to. It
-fills in a struct stat, defined in stat.h (kernel/stat.h) as:
+The fstat system call retrieves information from the inode that a file descriptor refers to. 
+It fills in a struct stat, defined in stat.h (kernel/stat.h) as:
 
 ```C
-#define T_DIR 1 // Directory
-#define T_FILE 2 // File
-#define T_DEVICE 3 // Device
-struct stat {
-int dev; // File system’s disk device
-uint ino; // Inode number
-short type; // Type of file
-short nlink; // Number of links to file
-uint64 size; // Size of file in bytes
-};
+#include "kernel/stat.h"
+
+struct stat st;
+if(fstat(fd, &st) < 0){
+    fprintf(2, "ls: cannot stat %s\n", path);
+    close(fd);
+    return;
+  }
 
 ```
-## The link & unlink system call
+### link & unlink
 
 The link system call creates another file system name referring to the same inode as an existing
 file. 

@@ -1,9 +1,9 @@
 # Ignore all files without extensions
-*
+code_examples/src/*
 # But don't ignore directories
-!*/
+# !*/
 # And don't ignore files with extensions
-!*.*
+# !*.*
 
 # xv6-riscv/
 # labs code

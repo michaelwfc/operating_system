@@ -59,7 +59,13 @@
     "new": "c",
     "ostream": "c",
     "stop_token": "c",
-    "streambuf": "c"
+    "streambuf": "c",
+    "atomic": "c",
+    "fstream": "c",
+    "sstream": "c",
+    "random": "c",
+    "fs.h": "c",
+    "param.h": "c"
   },
   "C_Cpp.default.compilerPath": "/usr/bin/gcc"
 }

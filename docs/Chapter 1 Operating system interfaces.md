@@ -122,9 +122,9 @@ prtintf("exec failed\n");
 # 1.2 I/O and File descriptors
 
 ## File descriptors
-A file descriptor is a small integer representing a kernel-managed object that a process may read from or write to.
+A file descriptor is a small integer representing **a kernel-managed object** that a process may read from or write to.
 
-Internally, the xv6 kernel uses the file descriptor as an index into a per-process table, so that every process has a private space of file descriptors starting at zero. 
+Internally, the xv6 kernel uses the file descriptor as **an index into a per-process table**, so that every process has a private space of file descriptors starting at zero. 
 
 By convention, a process reads from 
 - file descriptor 0 (standard input)- 

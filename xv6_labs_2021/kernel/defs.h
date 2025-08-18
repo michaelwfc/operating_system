@@ -9,6 +9,12 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+// declare sysinfo 
+struct sysinfo; // add sysinfo structure
+uint64 sysinfo(uint64 addr); // add sysinfo prototype
+uint64 freemomory(void);
+uint64 nproc(void);
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);

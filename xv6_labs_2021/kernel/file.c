@@ -87,14 +87,14 @@ fileclose(struct file *f)
 int
 filestat(struct file *f, uint64 addr)
 {
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // get current process struct
   struct stat st;
   
   if(f->type == FD_INODE || f->type == FD_DEVICE){
-    ilock(f->ip);
-    stati(f->ip, &st);
-    iunlock(f->ip);
-    if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)
+    ilock(f->ip);        // lock the inode (to safely read it)
+    stati(f->ip, &st);   // fill `st` with inode info (size, type, nlink…)
+    iunlock(f->ip);      // unlock inode
+    if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)  // Copy the kernel struct stat `st` into user-space buffer `addr`
       return -1;
     return 0;
   }

@@ -29,6 +29,7 @@ sys_fork(void)
   return fork();
 }
 
+
 uint64
 sys_wait(void)
 {
@@ -94,4 +95,14 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+// system call wrapper functions for sysinfotest
+uint64
+sys_sysinfo(void)
+{ 
+  uint64 st;// user pointer to struct sysinfo
+  if(argaddr(0, &st) < 0)
+    return -1;
+  return sysinfo(st);
 }

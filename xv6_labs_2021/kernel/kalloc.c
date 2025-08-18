@@ -14,6 +14,13 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
+/**
+ * A run is a free memory block (one page = 4096 bytes).
+ * The struct run itself is stored at the start of that free page.
+ * next points to the next free page in the allocator’s free list.
+So the free memory is maintained as a linked list of free pages.
+So freelist points to the first run, and you can traverse through all free pages.
+ */
 struct run {
   struct run *next;
 };
@@ -79,4 +86,26 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+
+/**
+ * Function To collect the amount of free memory: 
+ * We walk the free list and count how many pages are free.
+ * 
+ * xv6 allocates memory in pages (4KB each).
+ * The free memory is tracked by a free list (freelist) in kalloc.c.
+ * Each free block is a struct run linked list.
+ */
+uint64
+freemomory(void)
+{ 
+  struct run *r;
+  uint64 freebytes = 0;
+  acquire(&kmem.lock);  // Protect with the spinlock kmem.lock because freelist can change in parallel.
+  for(r = kmem.freelist; r; r = r->next)
+    freebytes += PGSIZE;
+  release(&kmem.lock);
+  return freebytes;
+
 }

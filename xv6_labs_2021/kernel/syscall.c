@@ -105,6 +105,9 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 
+// Declare the function sys_sysinfotest with extern if it's implemented in another file.
+extern uint64 sys_sysinfo(void);
+
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,
@@ -127,6 +130,10 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+
+// add syscall numbers mapping to kernel function pointers
+[SYS_sysinfo] sys_sysinfo,
+
 };
 
 void
@@ -135,9 +142,9 @@ syscall(void)
   int num;
   struct proc *p = myproc();
 
-  num = p->trapframe->a7;
+  num = p->trapframe->a7;   // syscall number from user
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
+    p->trapframe->a0 = syscalls[num](); // return value in a0
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);

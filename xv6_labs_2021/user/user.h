@@ -1,6 +1,9 @@
 struct stat;
 struct rtcdate;
-struct sysinfo;
+
+
+// add prototype of trace
+int trace(int);
 
 // declare struct and system calls here
 struct sysinfo;

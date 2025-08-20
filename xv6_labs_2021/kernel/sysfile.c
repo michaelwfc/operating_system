@@ -72,7 +72,10 @@ sys_read(void)
   struct file *f;
   int n;
   uint64 p;
-
+  
+  //  argfd(0, 0, &f);   // get fd (0th arg) → struct file* f
+  // argint(2, &n);     // get 2st arg → integer count (n bytes)
+  // argaddr(1, &p);    // get 1nd arg → user pointer (buffer address)
   if(argfd(0, 0, &f) < 0 || argint(2, &n) < 0 || argaddr(1, &p) < 0)
     return -1;
   return fileread(f, p, n);

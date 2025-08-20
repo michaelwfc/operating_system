@@ -135,6 +135,7 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 .PRECIOUS: %.o
 
 UPROGS=\
+    $U/_trace\
 	$U/_sysinfotest\
 	$U/_sleep\
 	$U/_pingpong\

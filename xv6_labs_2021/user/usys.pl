@@ -23,7 +23,10 @@ sub entry {
     print " ecall\n";
     print " ret\n";
 }
-# add entry for sysinfo
+
+# Add stub for the syscall: trace and sysinfo
+# Run make qemu will regenerate user/usys.S automatically.
+entry("trace");
 entry("sysinfo");
 
 entry("fork");

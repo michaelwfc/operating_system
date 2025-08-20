@@ -97,6 +97,19 @@ sys_uptime(void)
   return xticks;
 }
 
+// system call wrapper functions for trace
+uint64
+sys_trace(void){
+  int mask;
+  // pass the user side mask to the kernel side
+  if(argint(0, &mask) < 0)
+    return -1;
+  //myproc() here refers to the process running trace (the child of the shell), not the shell itself
+  myproc()->tracemask = mask; 
+
+  return 0;
+}
+
 // system call wrapper functions for sysinfotest
 uint64
 sys_sysinfo(void)

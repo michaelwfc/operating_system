@@ -1,15 +1,23 @@
+
+
+
+# Preparation: 
+Read chapter 2 and xv6 code: kernel/proc.h, kernel/defs.h, kernel/entry.S, kernel/main.c, user/initcode.S, user/init.c, and skim kernel/proc.c and kernel/exec.c
+
+# Reading
+
+[13] David Patterson and Andrew Waterman. The RISC-V Reader: an open architecture Atlas.Strawberry Canyon, 2017.
+[2] The RISC-V instruction set manual: user-level ISA. https://riscv.org/specifications/isa-spec-pdf/, 2019.
+[1] The RISC-V instruction set manual: privileged architecture. https://riscv.org/specifications/privileged-isa/, 2019.
+
+
+
 Thus an operating system must fulfill three requirements: 
 - multiplexing 
 - isolation
 - interaction
 
 
-[13] David Patterson and Andrew Waterman. The RISC-V Reader: an open architecture Atlas.
-Strawberry Canyon, 2017.
-[2] The RISC-V instruction set manual: user-level ISA. https://riscv.org/
-specifications/isa-spec-pdf/, 2019.
-[1] The RISC-V instruction set manual: privileged architecture. https://riscv.org/
-specifications/privileged-isa/, 2019.
 
 # 2.1 Abstracting physical resources
 
@@ -50,17 +58,25 @@ If an application in user mode attempts to execute **a privileged instruction**,
   - kernel
   The software running in kernel space (or in supervisor mode) is called the kernel.
 
+## How to invoke a kernel function
+An application that wants to invoke a kernel function (e.g., the read system call in xv6) must transition to the kernel; an application **cannot** invoke a kernel function directly.
 
-An application that wants to invoke a kernel function (e.g., the read system call in xv6) must transition to the kernel; an application **cannot** invoke a kernel function directly
+
+CPUs provide a special instruction that switches the CPU from user mode to supervisor mode and enters the kernel at an entry point specified by the kernel. 
+(RISC-V provides the **ecall** instruction for this purpose.)
 
 
+
+It is important that the kernel control the entry point for transitions to supervisor mode;
 ##  user mode.
 
 # 2.3 Kernel organization
 
+A key design question is what part of the operating system should run in supervisor mode. 
+
 ## Monolithic kernel
 
-A key design question is what part of the operating system should run in supervisor mode. One
+One
 possibility is that the entire operating system resides in the kernel, so that the implementations of
 all system calls run in supervisor mode. This organization is called a monolithic kernel.
 
@@ -98,10 +114,12 @@ relatively simple, as most of the operating system resides in user-level servers
 
 # 2.4 Code: xv6 organization
 
-- The xv6 kernel source is in the kernel/ sub-directory
-- The inter-module interfaces are defined in defs.h (kernel/defs.h)
+- The xv6 kernel source is in the kernel/sub-directory
+- The inter-module interfaces are defined in `defs.h` (kernel/defs.h)
+It contains function prototypes for every kernel function (from different .c files).
+It works like a central declaration hub, so that different kernel source files can call each other’s functions without including each file separately.
+It helps the compiler catch errors (wrong arguments, missing return values).
 
-Below is the converted Markdown table from the provided file descriptions:
 
 | File          | Description                                                  |
 |---------------|--------------------------------------------------------------|
@@ -134,6 +152,8 @@ Below is the converted Markdown table from the provided file descriptions:
 | vm.c          | Manage page tables and address spaces.                       |
 
 Figure 2.2: Xv6 kernel source files.
+
+
 
 # 2.5 Process overview
 
@@ -180,5 +200,138 @@ Much of the state of a thread (local variables, function call return addresses) 
 Each process has two stacks: a user stack and a kernel stack (p->kstack).
 
 
+# 2.6 Code: starting xv6
 
 
+## Compiling xv6
+
+Kernel:
+
+       gcc          assembler          linker
+proc.c ---> proc.s ---> proc.o
+....                                   ld    ---> kernel
+pip.c  ---> pipe.s ---> pipe.o
+
+
+```bash
+cd xv6-riscv
+
+make CPUS=1 qemu-gdb
+
+
+# in another terminal
+gdb-multiarch
+
+# you must tell it which program (ELF with symbols) to use:
+# This loads the xv6 kernel ELF produced by the build system (kernel/kernel, sometimes kernel/kernel.asm is the disassembly, not the ELF).
+
+(gdb) file kernel/kernel
+
+# After that, you connect to QEMU’s gdb stub:
+(gdb) target remote :26000
+
+# set breakpoint at _entry in kernel/kenel.asm: first instuction in qemu emulator
+b _entry
+
+# set breakpoint at main in kernel/main.c
+b main
+
+# set breakpoint at panic in kernel/proc.c
+b userinit
+
+# Use layout asm for an assembly window.
+# show the asm window and source code window
+layout split
+```
+## Starting xv6, The first process and system call
+
+When the RISC-V computer powers on, it initializes itself and runs a boot loader which is stored in read-only memory. 
+The boot loader loads the xv6 kernel into memory. 
+Then, in machine mode, the CPU executes xv6 starting at _entry (kernel/entry.S:7). 
+The RISC-V starts with paging hardware disabled: virtual addresses map directly to physical addresses.
+The loader loads the xv6 kernel into memory at physical address 0x80000000. 
+The reason it places the kernel at 0x80000000 rather than 0x0 is because the address range 0x0:0x80000000 contains I/O devices.
+
+### _entry
+The instructions at _entry set up a stack so that xv6 can run C code. 
+
+Xv6 declares space for an initial stack, stack0, in the file start.c (kernel/start.c:11). 
+The code at _entry loads the stack pointer register sp with the address stack0+4096, the top of the stack, because the stack on RISC-V grows down. 
+
+Now that the kernel has a stack, _entry calls into C code at start (kernel/start.c:21).
+The function start performs some configuration that is only allowed in machine mode, and then switches to supervisor mode. 
+
+### enter supervisor mode
+To enter supervisor mode, RISC-V provides the instruction mret. This instruction is most often used to return from a previous call from supervisor mode to machine mode. 
+start isn’t returning from such a call, and instead sets things up as if there had been one: 
+- it sets the previous privilege mode to supervisor in the register mstatus, 
+- it sets the return address to main by writing main’s address into the register mepc, disables virtual address translation in supervisor mode by writing 0 into the page-table register satp, and delegates all interrupts and exceptions to supervisor mode.
+
+Before jumping into supervisor mode, start performs one more task: 
+it programs the clock chip to generate timer interrupts.With this housekeeping out of the way, start “returns” to supervisor mode by calling mret. 
+This causes the program counter to change to main (kernel/main.c:11).
+
+After main (kernel/main.c:11) initializes several devices and subsystems, 
+
+### calling userinit
+it creates the first process by calling userinit (kernel/proc.c:226). 
+The first process executes a small program written in RISC-V assembly, make makes the first system call in xv6. 
+1. initcode.S (user/initcode.S:3) loads the number for the exec system call, SYS_EXEC (kernel/syscall.h:8), into register a7, and then calls ecall to re-enter the kernel. 
+2. The kernel uses the number in register a7 in syscall (kernel/syscall.c:133) to call the desired system call. 
+The system call table (kernel/syscall.c:108) maps SYS_EXEC to sys_exec, which the kernel invokes. 
+3. As we saw in Chapter 1, exec replaces the memory and registers of the current process with a new program (in this case, /init).
+4. Once the kernel has completed exec, it returns to user space in the /init process. 
+5. Init (user/init.c:15) creates a new console device file if needed and then opens it as file descriptors 0, 1, and 2. 
+Then it starts a shell on the console. The system is up.
+
+
+### 4.3 Code: Calling system calls
+
+1. initcode.S places the arguments for exec in registers a0 and a1, and puts the system call number in a7. 
+2. System call numbers match the entries in the syscalls array, a table of function pointers (kernel/syscall.c:108). 
+3. The ecall instruction traps into the kernel and causes uservec, usertrap, and then syscall to execute, as we saw above.
+4. syscall (kernel/syscall.c:133) retrieves the system call number from the saved a7 in the trapframe and uses it to index into syscalls. 
+For the first system call, a7 contains SYS_exec (kernel/syscall.h:8), resulting in a call to the system call implementation function sys_exec.
+5. When sys_exec returns, syscall records its return value in p->trapframe->a0. 
+This will cause the original user-space call to exec() to return that value, since the C calling convention on RISC-V places return values in a0. 
+System calls conventionally return negative numbers to indicate errors, and zero or positive numbers for success. If the system call number is invalid, syscall prints an error and returns -1.
+
+### 4.4 Code: System call arguments
+
+
+#### Parameter handling
+- `argint` to retrieve the integer argument
+- `argfd()` to retrieve the file descriptor argument
+- `argaddr()` to get the user-space pointer for the stat structure
+  
+
+System call implementations in the kernel need to find the arguments passed by user code. 
+Because user code calls `system call wrapper functions`, the arguments are initially where the RISC-V Calling convention places them: `in registers`. 
+
+`The kernel trap code` saves user registers to the current process’s `trap frame`, where kernel code can find them. 
+The kernel functions `argint`, `argaddr`, and `argfd` retrieve the n’th system call argument from the `trap frame` as an integer, pointer, or a file descriptor. 
+They all call `argraw` to retrieve the appropriate saved user register (kernel/syscall.c:35).
+Some system calls pass pointers as arguments, and the kernel must use those pointers to read or write user memory. 
+
+The exec system call, for example, passes the kernel an array of pointers referring to string arguments in user space. These pointers pose two challenges. 
+- First, the user program may be buggy or malicious, and may pass the kernel an invalid pointer or a pointer intended to trick the kernel into accessing kernel memory instead of user memory. 
+- Second, the xv6 kernel page table mappings are not the same as the user page table mappings, so the kernel cannot use ordinary instructions to load or store from user-supplied addresses.
+
+
+#### Safely transfer data to and from user-supplied addresses
+- `fetchstr`
+- `copyinstr`
+- `walkaddr`
+- `copyout`
+
+The kernel implements functions that safely transfer data to and from user-supplied addresses.
+`fetchstr` is an example (kernel/syscall.c:25).0
+File system calls such as exec use fetchstr to retrieve string file-name arguments from user space. 
+fetchstr calls `copyinstr` to do the hard work.
+
+`copyinstr` (kernel/vm.c:398) copies up to max bytes to dst from virtual address srcva in the user page table pagetable. 
+Since pagetable is not the current page table, copyinstr uses `walkaddr` (which calls walk) to look up srcva in pagetable, yielding physical address pa0. 
+
+The kernel maps each physical RAM address to the corresponding kernel virtual address, so copyinstr can directly copy string bytes from pa0 to dst. 
+walkaddr (kernel/vm.c:104) checks that the user-supplied virtual address is part of the process’s user address space, so programs cannot trick the kernel into reading other memory. 
+A similar function, `copyout`, copies data from the kernel to a user-supplied address.

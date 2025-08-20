@@ -300,12 +300,12 @@ The call stack shows the sequence of function calls that led to the current poin
 # This command displays the stack frames, helping you understand how the program arrived at its current state.
 
 # These commands help you track the flow of execution in your program while debugging with gdb.
-where: Shows the current call stack and highlights the current line of execution.
-frame: Displays the current frame, including the current function and line number.
-info line: Provides detailed information about the current line, including memory addresses.
-list: Lists the source code around the current line of execution, with the current line highlighted.
-
-
+(gdb) where: Shows the current call stack and highlights the current line of execution.
+(gdb) frame: Displays the current frame, including the current function and line number.
+(gdb) list         # show nearby source code, Lists the source code around the current line of execution, with the current line highlighted.
+(gdb) info source  # current source file
+(gdb) info line: Provides detailed information about the current line, including memory addresses.
+(gdb) disassemble  # show assembly at current pc
 ```
 
 

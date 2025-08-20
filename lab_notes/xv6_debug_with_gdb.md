@@ -1,5 +1,6 @@
 # Debugging with GDB
-
+- https://pdos.csail.mit.edu/6.828/2021/labs/guidance.html
+- 
 For kernel or user-space debugging:
 
 1. Start xv6 in gdb server mode:
@@ -18,7 +19,9 @@ make qemu-gdb
 In a separate terminal:
 
 ```bash
+# riscv64-linux-gnu-gdb
 gdb-multiarch
+
 # user/_primes is a RISC-V ELF
 # loaded the user/_primes binary ,just loads debug symbols into GDB
 # it hasn’t actually started xv6 or loaded your program into the emulator’s memory yet.
@@ -63,3 +66,16 @@ $ primes
 Thread 3 hit Breakpoint 1, main (argc=1, argv=0x2fe0) at user/primes.c:79
 79      {
 ```
+
+
+## kernel/kernel.asm
+
+If you want to see what the assembly is that the compiler generates for the kernel or to find out what the instruction is at a particular kernel address, see the file kernel.asm, which the Makefile produces when it compiles the kernel. (The Makefile also produces .asm for all user programs.)
+
+
+If the kernel panics, it will print an error message listing the value of the program counter when it crashed; you can search kernel.asm to find out in which function the program counter was when it crashed, or you can run addr2line -e kernel/kernel pc-value (run man addr2line for details). If you want to get backtrace, restart using gdb: run 'make qemu-gdb' in one window, run gdb (or riscv64-linux-gnu-gdb) in another window, set breakpoint in panic ('b panic'), followed by followed by 'c' (continue). When the kernel hits the break point, type 'bt' to get a backtrace.
+
+If your kernel hangs (e.g., due to a deadlock) or cannot execute further (e.g., due to a page fault when executing a kernel instruction), you can use gdb to find out where it is hanging. Run run 'make qemu-gdb' in one window, run gdb (riscv64-linux-gnu-gdb) in another window, followed by followed by 'c' (continue). When the kernel appears to hang hit Ctrl-C in the qemu-gdb window and type 'bt' to get a backtrace.
+
+## info mem
+qemu has a "monitor" that lets you query the state of the emulated machine. You can get at it by typing control-a c (the "c" is for console). A particularly useful monitor command is info mem to print the page table. You may need to use the cpu command to select which core info mem looks at, or you could start qemu with make CPUS=1 qemu to cause there to be just one core.

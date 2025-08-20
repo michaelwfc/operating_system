@@ -1,0 +1,547 @@
+
+# Introduction
+- https://pdos.csail.mit.edu/6.828/2021/labs/util.html
+  
+In the last lab you used systems calls to write a few utilities. 
+In this lab you will add some new system calls to xv6, which will help you understand how they work and will expose you to some of the internals of the xv6 kernel.
+You will add more system calls in later labs.
+
+
+Before you start coding, read Chapter 2 of the xv6 book, and Sections 4.3 and 4.4 of Chapter 4, and related source files:
+
+# Related source files
+
+- The user-space code for systems calls is in user/user.h and user/usys.pl.
+- The kernel-space code is kernel/syscall.h, kernel/syscall.c.
+- The process-related code is kernel/proc.h and kernel/proc.c.
+
+Great question 🙂 — you’re basically asking how **xv6 wires together user space → system call → kernel → process management**. Let me break down each file’s role in that chain:
+
+---
+
+## 🔹 User-space system call stubs
+
+### `user/user.h`
+
+* This is the **header file** for user programs.
+* It declares prototypes for all the system calls (e.g., `int fork(void); int write(int, const void*, int); void exit(int);`).
+* When you include `user.h` in your `*.c` program in xv6, you can call these system calls just like normal C functions.
+* **But** the actual implementation is not in C — it’s generated assembly stubs.
+
+---
+
+### `user/usys.pl`
+
+* This is a small **Perl script** that generates **system call stubs** in assembly (`usys.S`).
+* For each syscall (like `fork`, `write`, etc.), it emits a small wrapper like:
+
+```asm
+fork:
+    li a7, SYS_fork   # load syscall number into a7
+    ecall             # trap into the kernel
+    ret
+```
+
+* So when you call `fork()` in user space:
+
+  1. The C program jumps to this stub.
+  2. Stub puts syscall number into register `a7`.
+  3. Executes `ecall`, which traps into the kernel.
+
+---
+
+## 🔹 Kernel-side system call handling
+
+### `kernel/syscall.h`
+
+* Defines syscall numbers (`SYS_fork`, `SYS_write`, etc.).
+* Declares `sys_*` functions (like `sys_fork`, `sys_write`) that the kernel implements.
+
+---
+
+### `kernel/syscall.c`
+
+* Core of syscall handling:
+
+  * Has a **syscall table**, mapping syscall numbers → kernel function pointers:
+
+    ```c
+    static uint64 (*syscalls[])(void) = {
+      [SYS_fork]   sys_fork,
+      [SYS_exit]   sys_exit,
+      [SYS_wait]   sys_wait,
+      ...
+    };
+    ```
+  * Implements the dispatcher:
+
+    ```c
+    void syscall(void) {
+        int num = p->trapframe->a7;   // syscall number from user
+        if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+            p->trapframe->a0 = syscalls[num]();  // return value in a0
+        } else {
+            printf("%d %s: unknown sys call %d\n", p->pid, p->name, num);
+            p->trapframe->a0 = -1;
+        }
+    }
+    ```
+
+* So when `ecall` happens:
+
+  1. CPU traps into kernel.
+  2. Kernel trap handler calls `syscall()`.
+  3. `syscall()` looks up correct function and executes it.
+
+---
+
+## 🔹 Process management
+
+### `kernel/proc.h`
+
+* Defines the **process data structures**:
+
+  * `struct proc`: per-process control block (trapframe, kernel stack, state, pid, parent, etc.).
+  * `struct proc *proc[NPROC]`: process table.
+  * `struct context`: for saving registers during context switches.
+
+---
+
+### `kernel/proc.c`
+
+* Implements **process lifecycle**:
+
+  * `allocproc()` → allocate new process slot.
+  * `userinit()` → create first user process (`initcode`).
+  * `fork()`, `exit()`, `wait()` → process creation/termination.
+  * `scheduler()`, `sched()`, `yield()` → CPU scheduling.
+  * `sleep()`, `wakeup()` → process blocking/unblocking.
+
+---
+
+##  Putting it all together
+
+Let’s trace one example: `write(fd, buf, n)` in a user program.
+
+1. User program calls `write(1, "hi\n", 3);`
+2. `user.h` prototype lets the compiler accept it.
+3. `usys.S` stub runs:
+
+   * loads `SYS_write` into `a7`
+   * puts args in `a0, a1, a2`
+   * executes `ecall`
+4. CPU traps into kernel at `syscall()`.
+5. `syscall()` looks at `a7`, sees `SYS_write`, calls `sys_write()`.
+6. `sys_write()` (in `sysfile.c`) calls lower-level `filewrite()`.
+7. Kernel writes bytes into fd’s file object.
+8. Return value is stored in `a0` (user’s return register).
+9. Control returns to user program after `ecall`.
+
+---
+
+So in short:
+
+* **user/user.h + usys.pl** → user-visible syscall wrappers.
+* **kernel/syscall.h + syscall.c** → kernel’s syscall dispatcher.
+* **kernel/proc.h + proc.c** → process table and scheduling, so syscalls like `fork`, `exit`, `wait` work.
+
+---
+
+## Flow diagram(syscall path from user to kernel to proc)
+
+Perfect — here’s a flow diagram of how a **system call in xv6** travels from **user program → kernel → process management**:
+
+```
+User Space (Program)
+   |
+   v
+-------------------------------------------------
+| user/user.h    -> prototypes (e.g., int fork();) |
+| user/usys.S    -> assembly stubs (generated by   |
+|                   usys.pl, calls ecall)          |
+-------------------------------------------------
+   |
+   |  fork() called
+   v
+Assembly Stub
+   li a7, SYS_fork      <- syscall number
+   ecall                <- trap into kernel
+   |
+   v
+================= Trap into Kernel =================
+   |
+   v
+-------------------------------------------------
+| trap handler (kernel/trap.c)                    |
+|   detects ecall, jumps to syscall()             |
+-------------------------------------------------
+   |
+   v
+-------------------------------------------------
+| kernel/syscall.c                                |
+|   syscall(): dispatcher                         |
+|   - lookup syscalls[num] from syscall table     |
+|   - calls sys_fork()                            |
+-------------------------------------------------
+   |
+   v
+-------------------------------------------------
+| kernel/sysproc.c / kernel/proc.c                |
+|   sys_fork() → fork() → allocproc()             |
+|   - copies parent process                       |
+|   - allocates kernel stack, trapframe, context  |
+|   - marks child as RUNNABLE                     |
+-------------------------------------------------
+   |
+   v
+-------------------------------------------------
+| kernel/proc.c                                   |
+|   scheduler()                                   |
+|   - picks RUNNABLE process                      |
+|   - context switch to child                     |
+-------------------------------------------------
+   |
+   v
+================= Back to User =================
+   |
+   v
+Return from ecall
+   - child's fork() returns 0
+   - parent's fork() returns child's pid
+```
+
+---
+
+✅ So the flow is:
+
+1. **user.h** gives C prototypes.
+2. **usys.S** stub executes `ecall`.
+3. **trap.c** sends control into kernel.
+4. **syscall.c** dispatches to correct `sys_*` function.
+5. **proc.c** (and friends) handle process scheduling/management.
+6. Return value placed in user’s register `a0`.
+7. Back to user program.
+
+---
+
+Would you like me to make a **graphical diagram (boxes + arrows, like a real flowchart)** that you can view as an image?
+
+
+# System call tracing
+
+In this assignment you will add a system call `tracing` feature that may help you when debugging later labs. You'll create a new trace system call that will control tracing. It should take one argument, `an integer "mask"`, whose bits specify which system calls to trace. 
+For example, to trace the fork system call, a program calls trace(`1 << SYS_fork`), where SYS_fork is a syscall number from kernel/syscall.h. 
+
+You have to modify the xv6 kernel to print out a line when each system call is about to return, if the system call's number is set in the mask. 
+The line should contain 
+- the process id 
+- the name of the system call 
+- the return value
+
+you don't need to print the system call arguments. The trace system call should enable tracing for the process that calls it and any children that it subsequently forks, but should not affect other processes.
+
+## Output samples
+We provide a trace user-level program that runs another program with tracing enabled (see user/trace.c). When you're done, you should see output like this:
+
+```bash
+$ trace 32 grep hello README
+# 32: the mask of syscalls to trace
+3: syscall read -> 1023  
+3: syscall read -> 966
+3: syscall read -> 70
+3: syscall read -> 0
+
+# 1023: the return value of read(), meaning the number of bytes read.
+# read(fd, buf, n) returns the number of bytes actually read from the file descriptor fd.
+# If it reaches the end of the file, it returns 0.
+# If there’s an error, it returns -1.
+
+
+# grep needs to read the file README.
+# It doesn’t read the whole file at once. Instead, it repeatedly calls read() in a loop until it reaches the end.
+# Each read() system call asks for up to N bytes (depending on grep’s buffer size, maybe 1024).
+# The kernel returns however many bytes are currently available.
+
+# So in this case:
+# 1. First read(fd, buf, 1024) → kernel returns 1023 bytes (almost full buffer), call read 1023 bytes.
+# 2. Second read(fd, buf, 1024) → kernel returns 966 bytes.  read returned 966 bytes. 
+# 3. Third read(fd, buf, 1024) → kernel returns 70 bytes (the last chunk). Then read 70 bytes.
+# 4. Fourth read(fd, buf, 1024) → kernel reaches end of file → returns 0. Finally, read 0 → this means end of file (EOF).
+
+$
+$ trace 2147483647 grep hello README
+4: syscall trace -> 0
+4: syscall exec -> 3
+4: syscall open -> 3
+4: syscall read -> 1023
+4: syscall read -> 966
+4: syscall read -> 70
+4: syscall read -> 0
+4: syscall close -> 0
+$
+$ grep hello README
+$
+$ trace 2 usertests forkforkfork
+usertests starting
+test forkforkfork: 407: syscall fork -> 408
+408: syscall fork -> 409
+409: syscall fork -> 410
+410: syscall fork -> 411
+409: syscall fork -> 412
+410: syscall fork -> 413
+409: syscall fork -> 414
+411: syscall fork -> 415
+...
+$   
+```
+
+In the first example above, trace invokes grep tracing just the read system call. The 32 is `1<<SYS_read`. 
+
+In the second example, trace runs grep while tracing all system calls; the 2147483647 has all 31 low bits set. 
+
+In the third example, the program isn't traced, so no trace output is printed. 
+
+In the fourth example, the fork system calls of all the descendants of the forkforkfork test in usertests are being traced. Your solution is correct if your program behaves as shown above (though the process IDs may be different).
+
+
+## Some hints:
+- Add $U/_trace to UPROGS in Makefile
+- Run make qemu and you will see that the compiler cannot compile user/trace.c, because the user-space stubs for the system call don't exist yet: 
+  1. add `a prototype` for the system call to `user/user.h`
+  2. `a stub` to` user/usys.pl`
+  3. `a syscall number` to `kernel/syscall.h`. 
+  The Makefile invokes the perl script user/usys.pl, which produces `user/usys.S`, the actual system call stubs, which use the RISC-V `ecall` instruction to transition to the kernel. Once you fix the compilation issues, run trace 32 grep hello README; it will fail because you haven't implemented the system call in the kernel yet.
+
+- Add a `sys_trace()` function in `kernel/sysproc.c` that implements the new system call by remembering its argument in a new variable in the proc structure (see `kernel/proc.h`). The functions to retrieve system call arguments from user space are in `kernel/syscall.c`, and you can see examples of their use in `kernel/sysproc.c`.
+- Modify fork() (see kernel/proc.c) to copy the trace mask from the parent to the child process.
+  
+- Modify the syscall() function in kernel/syscall.c to print the trace output. You will need to add an array of syscall names to index into.
+
+##  The sequence of calls 
+```bash
+$ trace 32 grep hello README
+```
+
+### Full sequence summary
+1. sh runs trace 32 grep hello README.
+2. The shell calls fork() → creates a child process to run trace: exec("trace", ["trace", "32", "grep", "hello", "README"]).
+3. trace program starts.
+4. trace(mask=32) → syscall → sys_trace() sets p->tracemask=32.
+5. then trace does exec("grep", ...) → syscall → sys_exec(), process image replaced with grep.
+6. the new grep runs,  making syscalls (read, write, exit, etc.). inherits the same struct proc (including tracemask=32), so now all its syscalls are traced.
+Each syscall passes through syscall(). Since tracemask is set, the kernel prints trace messages when the syscall number matches the mask.
+
+
+2. After grep finishes
+- grep exits → kernel marks that struct proc as ZOMBIE.
+- The shell wait()s on it, then reclaims the process structure slot.
+- Importantly: the parent shell is not affected — only the child trace/grep had tracemask=32.
+
+### Calls Details
+
+1. User-space execution
+The shell (sh) sees the command trace 32 grep hello README.
+The shell forks a child process and exec("trace", ["trace", "32", "grep", "hello", "README"]).
+Now the user program trace starts running.
+
+2. Inside trace (user program, in user/trace.c)
+
+3. First system call: trace(mask)
+- The user program calls trace(mask) wrapper.
+- That executes an ecall → trap into kernel.
+- Kernel enters syscall(void) in kernel/syscall.c.
+
+In kernel:
+syscall() runs.
+    - Gets syscall number (a7).
+    - Dispatches to sys_trace() (because syscall num == SYS_trace).
+sys_trace():
+    - Reads argument (mask=32) using argint(0, &mask).
+    - Sets myproc()->tracemask = 32.
+    - Returns 0.
+
+syscall() stores return value in a0 and finishes.
+
+At this point, the process has tracemask = 32.
+
+4. Second system call: exec("grep", ["grep","hello","README"])
+- Still inside the trace program.
+- Calls exec wrapper → trap → kernel syscall().
+- syscall() dispatches to sys_exec().
+- sys_exec() replaces the current process’s memory image with the grep program, but keeps the same process structure (proc), so p->tracemask = 32 survives.
+- From this moment, the process is running grep instead of trace.
+
+
+5. Later system calls: from grep
+grep executes its logic:
+- opens files (open("README", ...)),
+- reads file content (read),
+- writes to stdout (write),
+- exits (exit).
+
+Each of these goes through syscall(). nside syscall(), after executing, the kernel checks:
+
+```bash
+if(p->tracemask & (1 << num)) {
+  printf("%d: syscall %s num %d\n", p->pid, syscallnames[num], p->trapframe->a0);
+}
+```
+Since tracemask=32 and 32 == (1 << 5), this means syscall number 5 will be traced.
+
+## Bug: why ls after trace “accidentally” inherited the trace flag
+when implement trace, we set tracemask in the parent process (the shell) instead of only in the trace child.
+trace was implemented incorrectly and calls sys_trace() before it forks/execs the target program, then the mask is set on itself (and that value gets inherited up or down)
+
+fork() in kernel/proc.c
+```c
+//  copy the trace mask from the parent to the child process.
+np->tracemask = p->tracemask;
+```
+
+## Debug
+```bash
+# in #1 terminal
+$ make qemu-gdb
+
+# in #2 terminal
+# you need to tell GDB to load the kernel ELF before connecting to QEMU. The xv6 Makefile usually provides a script for this, called kernel.asm / kernel.sym or a .gdbinit.
+# cd ~
+# touch .gdbinit
+# echo "add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_2021/.gdbinit">.gdbinit
+(gdb) file user/_trace
+
+
+gdb-multiarch kernel/kernel
+(gdb) target remote :26000  
+(gdb) b syscall                # now GDB knows symbols from kernel ELF
+(gdb) b sys_trace
+(gdb) c
+Continuing.
+
+# in the #1 terminal
+$ trace 32 grep hello README
+
+# in #2 terminal
+(gdb) c
+(gdb) layout split
+
+```
+
+
+
+
+# Sysinfo
+
+In this assignment you will add a system call, sysinfo, that collects information about the running system. 
+- The system call takes one argument: a pointer to a struct sysinfo (see kernel/sysinfo.h). 
+- The kernel should fill out the fields of this struct: 
+  - the freemem field should be set to the number of bytes of free memory
+  - the nproc field should be set to the number of processes whose state is not UNUSED. 
+  
+We provide a test program sysinfotest; you pass this assignment if it prints "sysinfotest: OK".
+
+## Some hints:
+- Add $U/_sysinfotest to UPROGS in Makefile
+- Run make qemu; user/sysinfotest.c will fail to compile. 
+```bash
+make qemu
+make: *** No rule to make target 'user/_sysinfotest', needed by 'fs.img'.  Stop.
+```
+  Add the system call sysinfo, following the same steps as in the previous assignment. 
+  To declare the prototype for sysinfo() in user/user.h you need predeclare the existence of struct sysinfo:
+
+    struct sysinfo;
+    int sysinfo(struct sysinfo *);
+  
+Once you fix the compilation issues, run sysinfotest; it will fail because you haven't implemented the system call in the kernel yet.
+
+- sysinfo needs to copy a struct sysinfo back to user space; 
+  see sys_fstat() (kernel/sysfile.c) and filestat() (kernel/file.c) for examples of how to do that using `copyout()`.
+- To collect the amount of free memory, add a function to `kernel/kalloc.c`
+- To collect the number of processes, add a function to `kernel/proc.c`
+
+
+## Solution Workflow
+
+### User side: Add the system call interface
+
+1. in `user/user.h`:  declares struct and prototypes for the system call sysinfo
+`struct sysinfo;`
+`int sysinfo(struct sysinfo *);`
+
+This declaration tells the C compiler the function signature, including its return type and parameters. The actual definition of fork() is provided elsewhere (typically in assembly or C files in the kernel or user library).
+
+2. in `user/usys.pl`: add system call stubs
+`entry("sysinfotest")`
+   - loads `SYS_sysinfotest` into a7
+   - puts args in a0, a1, a2
+   - executes `ecall`
+  
+
+1. in `user/sysinfotest.c`: build the program for user mode
+2. in Makefile: Add `$U/_sysinfotest` to UPROGS
+
+
+
+### Kernel side: system call implementation
+
+CPU traps into kernel at `syscall()`
+- `syscall()` looks at `a7`, sees `SYS_sysinfotest`, calls `sys_sysinfo()` in   `kernel/sysproc.c`
+- call `sysinfo` in `kernel/proc.c`
+
+
+1. in `kernel/syscall.h`: define `syscall` numbers for sysinfo
+`#define SYS_sysinfo 22`
+   
+2. in `kernel/syscall.c`: add syscall numbers mapping to kernel function pointers
+// Declare the function sys_sysinfotest with extern if it's implemented in another file.
+extern uint64 sys_sysinfotest(void);
+`[SYS_sysinfo] sys_sysinfo`
+
+
+3. in defs.h : add sysinfo structure and sysinfo prototype
+`struct sysinfo; // add sysinfo structure`
+`uint64 sysinfo(struct sysinfo *); // add sysinfo prototype`
+
+
+4. in `kernel/sysinfo.c`: define sysinfo struct
+struct sysinfo {
+  uint64 freemem;   // amount of free memory (bytes)
+  uint64 nproc;     // number of process
+};   
+   
+5. in `kernel/sysproc.c`: add `sys_sysinfo` system call wrapper function
+6. in `kernel/proc.c`:  the kernel-side implementation of `sysinfo` system call
+   - in `kernel/kalloc.c`: To collect the amount of free memory, add a function to `kernel/kalloc.c`
+   - in  `kernel/proc.c`: To collect the number of processes, add a function to `kernel/proc.c`
+
+
+### User mode
+
+9. Return value is stored in `a0` (user’s return register).
+10. Control returns to user program after `ecall`. 
+
+
+## Functions
+### Function To collect the amount of free memory
+
+- To collect the amount of free memory, add a function to `kernel/kalloc.c`
+  
+#### Background
+- xv6 allocates memory in pages (4KB each).
+- The free memory is tracked by a free list (freelist) in kalloc.c.
+- Each free block is a struct run linked list.
+
+
+### Function To collect the number of processes
+
+- To collect the number of processes, add a function to `kernel/proc.c`
+
+
+## Test
+
+```bash
+make qemu
+ls
+sysinfotest
+```

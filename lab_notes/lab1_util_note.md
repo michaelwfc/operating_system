@@ -1,3 +1,5 @@
+This lab will familiarize you with xv6 and its system calls.
+
 # Labs code
 - https://github.com/PKUFlyingPig/MIT6.S081-2020fall.git
 - https://pdos.csail.mit.edu/6.828/2021/labs/util.html

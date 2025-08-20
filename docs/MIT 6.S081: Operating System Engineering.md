@@ -10,7 +10,8 @@
 
   
 - **Course Website**: https://pdos.csail.mit.edu/6.828/2021/schedule.html
-- **Course Videos**: https://www.youtube.com/watch?v=L6YqHxYHa7A (individual lecture links available on course website)
+- **Course Videos**: https://www.youtube.com/watch?v=bKfeeIRWrbQ&list=PLTsf9UeqkReZHXWY9yJvTwLJWYYPcKEqK&index=2
+
 - **Course Video Translation**: https://mit-public-courses-cn-translatio.gitbook.io/mit6-s081/
 - **Course Textbook**: https://pdos.csail.mit.edu/6.828/2021/xv6/book-riscv-rev2.pdf
 - **Assignments**: https://pdos.csail.mit.edu/6.828/2021/schedule.html (11 labs, see course website for specific requirements)

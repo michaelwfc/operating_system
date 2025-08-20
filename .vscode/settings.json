@@ -65,7 +65,12 @@
     "sstream": "c",
     "random": "c",
     "fs.h": "c",
-    "param.h": "c"
+    "param.h": "c",
+    "defs.h": "c",
+    "proc.h": "c",
+    "spinlock.h": "c",
+    "riscv.h": "c",
+    "memlayout.h": "c"
   },
   "C_Cpp.default.compilerPath": "/usr/bin/gcc"
 }

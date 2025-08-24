@@ -82,9 +82,73 @@ https://github.com/PKUFlyingPig/MIT6.S081-2020fall.git
 # git clone https://github.com/mit-pdos/xv6-riscv.git
 ...
 $ cd xv6-labs-2021
+git branch -a
+
+
 $ git checkout util
 # Branch 'util' set up to track remote branch 'util' from 'origin'.
 # Switched to a new branch 'util'
+
+git log --oneline
+git log --pretty=format:"%h %an %s"
+# %h → abbreviated commit hash
+# %an → author name
+# %s → commit subject
+
+# Temporary "time travel"
+# 1. Checkout the commit (detached HEAD)
+git checkout <commit-hash>
+# Purpose: Temporarily move HEAD to a past commit (detached HEAD state,you’re not on a branch).
+# Effect:
+# - You can look at the repo as it was at that commit.
+# - Doesn’t delete history, doesn’t rewrite commits.
+# - If you make changes, you must create a new branch to save them: 
+git checkout -b debug-old-version
+# Analogy: “Travel back in time, look around, but don’t change history.”
+
+#  temporary "time travel" using git switch --detach
+git switch --detach <commit-hash>
+
+# Note: switching to '773d70b'.
+
+# You are in 'detached HEAD' state. You can look around, make experimental
+# changes and commit them, and you can discard any commits you make in this
+# state without impacting any branches by switching back to a branch.
+
+# If you want to create a new branch to retain commits you create, you may
+# do so (now or later) by using -c with the switch command. Example:
+
+#   git switch -c <new-branch-name>
+
+# Or undo this operation with:
+
+#   git switch -
+
+# Turn off this advice by setting config variable advice.detachedHead to false
+
+# HEAD is now at 773d70b fix filename
+
+
+
+git revert <commit-hash>
+# Purpose: Safely undo a commit by creating a new commit that reverses the changes.
+# Effect: Keeps history intact, makes collaboration safe (no rewrite).
+# Analogy: “Instead of erasing history, write a new chapter that says ‘undo what happened earlier.’”
+
+
+git reset
+# Purpose: Move the branch pointer (HEAD) to another commit.
+# Types:
+# --soft: Moves HEAD, keeps changes staged (in index).
+# --mixed (default): Moves HEAD, keeps changes in working dir, unstaged.
+# --hard: Moves HEAD and resets working dir and index (⚠️ destructive).
+# Effect: Can erase commits from history (locally). If you git push --force, you rewrite remote history too.
+# Analogy: “Rewind history to an earlier point and optionally throw away or keep your changes.”
+
+# Resetting back to a orginal commit
+git reflog
+git reset --hard HEAD@1
+
 ```
 
 # Testing your Installation

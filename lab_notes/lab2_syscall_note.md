@@ -408,7 +408,7 @@ $ make qemu-gdb
 # cd ~
 # touch .gdbinit
 # echo "add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_2021/.gdbinit">.gdbinit
-(gdb) file user/_trace
+# (gdb) file user/_trace
 
 
 gdb-multiarch kernel/kernel

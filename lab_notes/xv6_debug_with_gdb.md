@@ -19,14 +19,28 @@ make qemu-gdb
 In a separate terminal:
 
 ```bash
-# riscv64-linux-gnu-gdb
+# riscv64-linux-gnu-gdb / riscv64-unknown-elf-gdb
 gdb-multiarch
-
 # user/_primes is a RISC-V ELF
 # loaded the user/_primes binary ,just loads debug symbols into GDB
 # it hasn’t actually started xv6 or loaded your program into the emulator’s memory yet.
-
 (gdb) file user/_find
+
+# if we want to dubug kernel code
+gdb-multiarch kernel/kernel
+
+# enable tui window
+(gdb) tui enable
+# show the asm code
+(gdb) layout asm
+(gdb) layout reg
+(gdb) focus reg
+(gdb) focus asm
+(gdb) layout src # show the source code in window
+# split window to show both asm and source code
+(gdb) layout split
+
+
 # This attaches GDB to QEMU
 (gdb) target remote :26000 
 # Remote debugging using :26000

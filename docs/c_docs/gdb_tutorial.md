@@ -103,20 +103,17 @@ gdb bomb
 (gdb) b 74
 Breakpoint 1 at 0x400e37: file bomb.c, line 74.
 
-# Set a breakpoint at a specific function entry:
-(gdb) break main
+
+(gdb) break main # Set a breakpoint at a specific function entry:
 (gdb) b main
 
+(gdb) info breakpoints # List breakpoints to find their numbers: info breakpoints
 
-# List breakpoints to find their numbers: info breakpoints
-(gdb) info breakpoints
+(gdb) delete 2 # Delete a specific breakpoint: delete <breakpoint-number>
+(gdb) delete    #Delete all breakpoints: delete
 
-# Delete a specific breakpoint: delete <breakpoint-number>
-(gdb) delete 2
+(gdb) b sum_to if i==5 # conditional breakpoint 
 
-
-#Delete all breakpoints: delete
-(gdb) delete
 ```
 
 ## 5. Step Through the Code
@@ -161,39 +158,24 @@ The p (or print) command in gdb is used to evaluate and print the value of an ex
 (gdb) p <expression>
 
 # To check the values of variables, you can use the print command:
-(gdb) print x
-#This will display the current value of the variable x.
+(gdb) print x #This will display the current value of the variable x.
+(gdb) print x + y # Print expression: You can also evaluate expressions:
 
-# Print expression: You can also evaluate expressions:
-(gdb) print x + y
+(gdb) p *ptr  # Dereference a pointer: If ptr is a pointer, this prints the value stored at the memory location ptr points to.
+(gdb) p *argv # Print the address and value of 1st argv
+(gdb) p *argv@argc # Print the address and value of all argv
 
-# Dereference a pointer: If ptr is a pointer, this prints the value stored at the memory location ptr points to.
-(gdb) p *ptr
+(gdb) p &x    # Print the address of a variable: This prints the memory address where the variable x is stored.
 
-# Print the address of a variable: This prints the memory address where the variable x is stored.
-(gdb) p &x
+(gdb) print $rdx # You can also directly print the value of %rdx using the print (or p for short) command with the $ prefix to indicate a register.
 
-# You can also directly print the value of %rdx using the print (or p for short) command with the $ prefix to indicate a register.
-(gdb) print $rdx
-# To print the same value as a character:
-(gdb) p (char)$ecx
-# Print the Value in Binary Format:
-(gdb) print/t $eax
-(gdb) print/t 0xF3
+(gdb) p (char)$ecx # To print the same value as a character:
+(gdb) p (char*)input_pointer # print` 命令打印字符串
 
-# print the binary representation to character
-print (char)0b1000001
+(gdb) print/t $eax # Print the Value in Binary Format:
+(gdb) print/t 0xF3 
+(gdb) print (char)0b1000001 # print the binary representation to character
 
-# print` 命令打印字符串
-p (char*)input_pointer
-
-# 直接通过变量名查看字符串内容
-(gdb) x/s input_pointer
-# 0x55555555a000: "Hello, GDB!"
-
-# 或者通过地址查看
-(gdb) x/s &input_pointer
-# 0x55555577b018: 0x55555555a000   → 0x55555555a000: "Hello, GDB!"
 
 # Format Specifiers in GDB:
 # /t - binary
@@ -216,25 +198,28 @@ The x command in gdb is used to examine memory. Examine memory (x): View memory 
 # - x/<count>d <address>: View an array of integers.
 # - x/<count>f <address>: View an array of floats.
 
+
 # <count> specifies the number of units to display (optional).
 # <format> specifies how to display the memory contents (e.g., as an integer, character, etc.).
 # <address> is the memory address you want to examine.
 (gdb) x/<count><format> <address>
 
-# To view an int value at a specific address, you would use the format specifier /d (for signed decimal)
-(gdb) x/d <address>
-# /u (for unsigned decimal)
+(gdb) x/d <address> # To view an int value at a specific address, you would use the format specifier /d (for signed decimal)
+
 (gdb) x/u <address>
+(gdb) x/f 0x7fffffffde84 # To view a float value at a specific address, use the /f format specifier:
 
-# To view a float value at a specific address, use the /f format specifier:
-(gdb) x/f 0x7fffffffde84
+(gdb) x/5d 0x7fffffffdea0 # To view an array, you need to specify the number of elements (count) and the format for the type of the elements in the array.
 
-# s is a format specifier that tells gdb to interpret the memory at a specified address as a null-terminated string.
-(gdb) x/s <address>
+
+(gdb) x/s <address>  # s is a format specifier that tells gdb to interpret the memory at a specified address as a null-terminated string.
+(gdb) x/s input_pointer   # 直接通过变量名查看字符串内容
+# 0x55555555a000: "Hello, GDB!"
+(gdb) x/s &input_pointer # 或者通过地址查看
+# 0x55555577b018: 0x55555555a000   → 0x55555555a000: "Hello, GDB!"
+
 (gdb) x/6c <address>
 (gdb) x/6c $rsi
-# To view an array, you need to specify the number of elements (count) and the format for the type of the elements in the array.
-(gdb) x/5d 0x7fffffffdea0
 
 
 # This examines 4 words of memory starting at the address of x, showing them in hexadecimal.
@@ -290,26 +275,6 @@ On an x86-64 system (which is little-endian), memory is stored in little-endian 
 
 This ordering is standard on x86-64 systems, where the least significant byte is stored at the lowest address.
 
-## 7. View the Call Stack
-
-
-The call stack shows the sequence of function calls that led to the current point in the program:
-
-```bash
-(gdb) backtrace
-# This command displays the stack frames, helping you understand how the program arrived at its current state.
-
-# These commands help you track the flow of execution in your program while debugging with gdb.
-(gdb) where: Shows the current call stack and highlights the current line of execution.
-(gdb) frame: Displays the current frame, including the current function and line number.
-(gdb) list         # show nearby source code, Lists the source code around the current line of execution, with the current line highlighted.
-(gdb) info source  # current source file
-(gdb) info line: Provides detailed information about the current line, including memory addresses.
-(gdb) disassemble  # show assembly at current pc
-```
-
-
-
 ## 8. Modify Variables
 
 You can modify the value of variables while the program is paused:
@@ -323,7 +288,7 @@ This changes the value of x to 10.
 
 ## View the machine-level instructions commands
 
-In gdb, the info and disas (short for disassemble) commands are used to gather detailed information about the program you are debugging and to view the machine-level instructions that the CPU executes. 
+In gdb, the `info` and `disas` (short for disassemble) commands are used to gather detailed information about the program you are debugging and to view the machine-level instructions that the CPU executes. 
 
 ### Info
 
@@ -334,12 +299,10 @@ info: Provides detailed information about various aspects of the program, such a
 ```bash
 (gdb) info <subcommand>
 
-# info breakpoints: Lists all the breakpoints, watchpoints, and catchpoints currently set in your program.
-(gdb) info breakpoints
+(gdb) info breakpoints # Lists all the breakpoints, watchpoints, and catchpoints currently set in your program.
 (gdb) info b
 
-# info registers: Displays the current contents of all CPU registers.
-(gdb) info registers
+(gdb) info registers # Displays the current contents of all CPU registers.
 (gdb) info r
 (gdb) i r
 (gdb) info registers rdx
@@ -355,28 +318,38 @@ rdx    0x7fffffffdde0   140737488344800
 # if %rax contains a memory address, and you want to view the int stored at that address:
 (gdb) x/d $rax
 
-
-# info locals: Shows the values of all local variables in the current stack frame.
-(gdb) info locals
-
-# info args: Displays the values of all arguments passed to the current function.
-(gdb) info args
-
 # info functions: Lists all the functions that gdb knows about, usually from the current executable and any linked libraries.
 (gdb) info functions
 
 # info variables: Lists all global and static variables that gdb knows about.
 (gdb) info variables
 
-info stack
-# print stack
+
 
 ```
+#### View the Call Stack
+The call stack shows the sequence of function calls that led to the current point in the program:
 
+```bash
+# These commands help you track the flow of execution in your program while debugging with gdb.
+(gdb) where: Shows the current call stack and highlights the current line of execution.
+(gdb) list         # show nearby source code, Lists the source code around the current line of execution, with the current line highlighted.
+
+info stack         # print stack
+(gdb) info source  # current source file
+(gdb) info line    # Provides detailed information about the current line, including memory addresses.
+(gdb) info reg 
+(gdb) info args    # Displays the values of all arguments passed to the current function.
+(gdb) backtrace    # This command displays the stack frames, helping you understand how the program arrived at its current state.
+(gdb) frame number  # Switch to a specific frame.
+(gdb) info frame    # Displays the current frame, including the current function and line number.
+
+(gdb) info locals  #  Shows the values of all local variables in the current stack frame.
+```
 
 ### disas 
 
-The disas (short for disassemble) command in gdb disassembles the machine code of a function or a specific code region, showing the assembly instructions that the CPU executes.
+The `disas` (short for `disassemble`) command in gdb disassembles the machine code of a function or a specific code region, showing the assembly instructions that the CPU executes.
 disas: Disassembles machine code, showing the assembly instructions for a function or a specified range of addresses. This is useful for low-level debugging, understanding what the CPU is executing, and inspecting optimized code paths.
 
 ```bash

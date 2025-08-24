@@ -23,6 +23,13 @@
 ### xv6 Documentation
 
 - xv6-riscv :https://github.com/mit-pdos/xv6-riscv
+- https://pdos.csail.mit.edu/6.828/2024/readings/FU540-C000-v1.0.pdf
+- https://www.scs.stanford.edu/~zyedidia/docs/riscv/riscv-privileged.pdf
+- https://github.com/riscv/riscv-isa-manual/releases
+
+- [13] David Patterson and Andrew Waterman. The RISC-V Reader: an open architecture Atlas.Strawberry Canyon, 2017.
+- [2] The RISC-V instruction set manual: user-level ISA. https://riscv.org/specifications/isa-spec-pdf/, 2019.
+- [1] The RISC-V instruction set manual: privileged architecture. https://riscv.org/specifications/privileged-isa/, 2019.
 
 
 # NJU OS: Operating System Design and Implementation
@@ -33,3 +40,15 @@
 课程视频：https://space.bilibili.com/202224425/channel/collectiondetail?sid=192498
 课程教材：http://pages.cs.wisc.edu/~remzi/OSTEP/
 课程作业：https://jyywiki.cn/OS/2022/index.html
+
+# Other related courses
+
+
+[MIT-6.004 Computation Structures]->6.1910
+- https://ocw.mit.edu/courses/6-004-computation-structures-spring-2017/
+- http://github.com/computation-structures/course
+- https://hackway.org/docs/cs/sophomore/system/cs6004/
+
+[MIT-6.033 Computer System Engineering](http://web.mit.edu/6.033/www/)
+- https://ocw.mit.edu/courses/6-033-computer-system-engineering-spring-2018/
+- https://hackway.org/docs/cs/sophomore/system/cs6033

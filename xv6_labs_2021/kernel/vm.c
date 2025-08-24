@@ -26,7 +26,7 @@ pagetable_t
 kvmmake(void)
 {
  // allocate a physical page for the top-level page directory
-  kernel_pagetable = (pagetable_t) kalloc();  
+  // kernel_pagetable = (pagetable_t) kalloc();  
   // zero it out, so that all the PTEs are zero.
   // memset(kernel_pagetable, 0, PGSIZE);
 
@@ -59,6 +59,8 @@ kvmmake(void)
 
   // map kernel stacks
   proc_mapstacks(kpgtbl);
+
+  return kpgtbl;
 }
 
 

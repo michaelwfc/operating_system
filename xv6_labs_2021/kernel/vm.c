@@ -21,7 +21,9 @@ extern char trampoline[]; // trampoline.S
 void
 kvminit()
 {
-  kernel_pagetable = (pagetable_t) kalloc();
+  // allocate a physical page for the top-level page directory
+  kernel_pagetable = (pagetable_t) kalloc();  
+  // zero it out, so that all the PTEs are zero.
   memset(kernel_pagetable, 0, PGSIZE);
 
   // uart registers

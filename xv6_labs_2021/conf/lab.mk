@@ -1,1 +1,2 @@
-LAB=util
+# LAB=util
+LAB=pgtbl

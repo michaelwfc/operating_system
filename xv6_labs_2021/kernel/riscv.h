@@ -320,6 +320,26 @@ sfence_vma()
 }
 
 
+/**
+PGSIZE = 4096 = 2^12= 1, 0000, 0000,0000 = 0x1000 =  → the page size.
+PGSIZE - 1 = 4095 = 1111,1111,1111 = 0xFFF
+~(PGSIZE - 1) = bitmask that clears the low 12 bits: For 32-bit(4 bytes): ~0xFFF = 0xFFFFF000
+This mask is the magic tool to zero out the offset within a page.
+
+PGROUNDDOWN(a) → gives the start address of the page containing a.
+It clears the lower 12 bits of a.
+This gives you the page-aligned base address of the page containing a.
+Example:
+a = 0x12345
+~(PGSIZE-1) = 0xFFFFF000
+0x12345 & 0xFFFFF000 = 0x12000
+So, PGROUNDDOWN(0x12345) = 0x12000.
+That means address 0x12345 lives inside the page that starts at 0x12000.
+
+PGROUNDUP(sz) → rounds a size up to the next multiple of page size.
+useful when allocating memory — if a process asks for, say, 5000 bytes, the kernel must round it up to 8192 (2 pages).
+ */
+
 #define PGSIZE 4096 // bytes per page
 #define PGSHIFT 12  // bits of offset within a page
 
@@ -350,5 +370,42 @@ sfence_vma()
 // that have the high bit set.
 #define MAXVA (1L << (9 + 9 + 9 + 12 - 1))
 
-typedef uint64 pte_t;
-typedef uint64 *pagetable_t; // 512 PTEs
+typedef uint64 pte_t;        // one Page Table Entry (64 bits)
+typedef uint64 *pagetable_t; // points to 512 PTEs (one page table)，uint64 * is a pointer to a 64-bit unsigned integer
+/**
+On RISC-V Sv39, a page table page contains:
+- A page table page = one physical memory page = PGSIZE = 4096 bytes.
+- Each entry = 64-bit(8 bytes) PTE (page table entry)
+- So, each page table page can hold: 4096 bytes/8 bytes = 512 PTEs = an array of 512 uint64 values.
+- “A page table is a pointer to an array of 512 uint64 entries.”
+
+So:
+A pagetable_t points to the beginning of such a page, which is logically an array of 512 PTEs.
+
+
+
+Relationship between pagetable_t and pte_t
+
+pagetable_t
+    ↓
+[ PTE0 | PTE1 | PTE2 | ... | PTE511 ]
+   pte_t   pte_t   pte_t         pte_t
+
+
+pte_t *pte = &pagetable[index];
+is just indexing into that array of 512 PTEs. the address of an entry which is a pte_t*.
+1. pagetable[index]
+- Take the pointer pagetable.
+- Move forward index steps (each step = 8 bytes, since pte_t is 8 bytes).
+- Dereference that address, yielding a pte_t (a uint64 value).
+2. &pagetable[index]
+- Do the array subscript (pagetable[index]) as above.
+- Then take its address with &.
+- The result is a pointer to that element, i.e. a pte_t*.
+
+Step by step:
+- Look up the index-th PTE inside this page table (pagetable[index]).
+- Take the address of that PTE (&...).
+- Store that address in pte, so now pte points to the entry we want.
+So pte is now a handle to the index-th entry in the page table.
+ */

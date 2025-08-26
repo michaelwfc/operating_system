@@ -85,6 +85,7 @@ mycpu(void) {
 }
 
 // Return the current struct proc *, or zero if none.
+// “Which process is currently running on this CPU?”
 struct proc*
 myproc(void) {
   push_off();
@@ -180,15 +181,18 @@ proc_pagetable(struct proc *p)
 {
   pagetable_t pagetable;
 
-  // An empty page table.
+  // An empty page table.  allocates a top-level (level-2) page table.
   pagetable = uvmcreate();
   if(pagetable == 0)
     return 0;
 
-  // map the trampoline code (for system call return)
-  // at the highest user virtual address.
-  // only the supervisor uses it, on the way
-  // to/from user space, so not PTE_U.
+  // At the very top of user address space
+  // - Trampoline page: contains code to enter/exit the kernel on ecall
+  // - Trapframe page: per-process data (registers saved during a trap)
+  // These are special mappings so the user process can enter the kernel safely.
+
+  // map the trampoline code (for system call return) at the highest user virtual address.
+  // only the supervisor uses it, on the way to/from user space, so not PTE_U.
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
     uvmfree(pagetable, 0);

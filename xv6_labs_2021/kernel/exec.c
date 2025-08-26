@@ -19,7 +19,7 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // initializes a local pointer p to the current process.
 
   begin_op();
 
@@ -35,10 +35,22 @@ exec(char *path, char **argv)
   if(elf.magic != ELF_MAGIC)
     goto bad;
 
+  //Build a fresh page table
+  //Allocates and sets up a new page table for the process (kernel mappings, trampoline, etc.).
+  //Doesn’t yet load the program into memory — just prepares the structure.
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
   // Load program into memory.
+  /**
+  Iterates over program headers (the ELF file says what sections should be loaded).
+  uvmalloc grows the process memory to fit the segment (heap+code+data).
+  loadseg copies bytes from file → user memory.
+  Ensures addresses and sizes align with page boundaries.
+  At this point, code and data of the program are in the new pagetable.
+
+  This builds the text, data, and bss regions at the lowest part of the address space.
+  */
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
       goto bad;
@@ -49,26 +61,32 @@ exec(char *path, char **argv)
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
     uint64 sz1;
-    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0) //allocate physical memory for that segment.
       goto bad;
     sz = sz1;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
-    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
+    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)  //Copy segment contents into the allocated memory using loadseg()
       goto bad;
   }
   iunlockput(ip);
   end_op();
   ip = 0;
 
+  /**
+  Some of these steps temporarily yield or switch context (e.g., they may drop locks, call into the allocator, or otherwise allow interrupts).
+  Because of this, the compiler or code path cannot guarantee that p is still valid (in theory).
+  So xv6 developers sometimes just refresh the pointer by doing p = myproc(); again before continuing.
+   */
   p = myproc();
   uint64 oldsz = p->sz;
 
   // Allocate two pages at the next page boundary.
   // Use the second as the user stack.
+  // Right below the stack, xv6 reserves a guard page (mapped invalid, so any access will cause a fault).
   sz = PGROUNDUP(sz);
   uint64 sz1;
-  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
+  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0) //uvmalloc() is called again to allocate 2 pages for the user stack and guard page.
     goto bad;
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
@@ -110,11 +128,15 @@ exec(char *path, char **argv)
     
   // Commit to the user image.
   oldpagetable = p->pagetable;
-  p->pagetable = pagetable;
+  p->pagetable = pagetable;  
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+
+  // print that pagetable
+  if(p->pid == 1)
+    vmprint(p->pagetable);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 

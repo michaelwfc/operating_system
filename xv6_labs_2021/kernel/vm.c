@@ -18,21 +18,16 @@ extern char trampoline[]; // trampoline.S
 /*
  * create a direct-map page table for the kernel.
  */
-// void
-// kvminit()
-// {
-
 pagetable_t
 kvmmake(void)
 {
- // allocate a physical page for the top-level page directory
+
   // kernel_pagetable = (pagetable_t) kalloc();  
-  // zero it out, so that all the PTEs are zero.
   // memset(kernel_pagetable, 0, PGSIZE);
 
   pagetable_t kpgtbl;
-  kpgtbl = (pagetable_t) kalloc();
-  memset(kpgtbl, 0, PGSIZE);
+  kpgtbl = (pagetable_t) kalloc();  // allocate a physical page for the top-level page directory
+  memset(kpgtbl, 0, PGSIZE);   // zero it out, so that all the PTEs are zero.
 
   // uart registers
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
@@ -92,6 +87,28 @@ kvminithart()
 //   21..29 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
+
+/**
+pagetable: the top-level (L2) page table.
+va: the virtual address we want to translate.
+alloc: if true, allocate new intermediate page tables as needed.
+
+walk() starts at the top-level page table.
+For each level (L2 → L1):
+- Follow existing PTE if valid.
+- Otherwise, allocate a new page table (if alloc != 0).
+Finally return the leaf PTE pointer (level-0 entry).
+This is used both for looking up existing mappings and for creating new ones.
+
+In RISC-V Sv39, a multi-level page table works like a tree:
+Each page table page contains 512 entries (pte_t, 8 bytes each, 512 * 8 = 4096 = PGSIZE).
+Each entry (PTE) can either:
+- Point to the next-level page table (if PTE_V is set but not a leaf mapping), or
+- Be a leaf entry that directly maps a virtual page to a physical page.
+So when we’re in walk(), we might be looking at a level-2 or level-1 PTE.
+If that PTE is valid, it points to the next-level page table’s physical address.
+
+*/
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
@@ -99,16 +116,29 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];
+    // PX(level, va):  extracts the right 9 bits for that level  ->  index in that level page table 
+    // pagetable[PX(level, va)]: get the entry of that level page table at index
+    // &pagetable[PX(level, va)]: get the addrees of that enry and store it in pte,so pte points to the entry in the current page table for this virtual address.
+    pte_t *pte = &pagetable[PX(level, va)]; 
     if(*pte & PTE_V) {
-      pagetable = (pagetable_t)PTE2PA(*pte);
+      //already valid: follow the pointer to next-level page table
+      //PTE2PA(*pte):   extracts the physical address stored in the PTE.
+      //(pagetable_t)PTE2PA(*pte): Cast it to pagetable_t, so we can treat that physical page as another page table.
+      pagetable = (pagetable_t)PTE2PA(*pte); 
     } else {
+      // not valid: allocate a new page-table page
+      // If alloc == 0, we can’t proceed → return 0 (failure).
+      // Otherwise, allocate a new empty page table page with kalloc().
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
-      *pte = PA2PTE(pagetable) | PTE_V;
+      // Fill the current PTE with the physical address of the new page table (PA2PTE(pagetable)) and mark valid (PTE_V).
+      // This is how xv6 creates new page tables on demand.
+      *pte = PA2PTE(pagetable) | PTE_V; 
     }
   }
+  // After the loop, we’re at level 0 (leaf).
+  // Return the pointer to the leaf PTE that corresponds to va.
   return &pagetable[PX(0, va)];
 }
 
@@ -312,6 +342,34 @@ freewalk(pagetable_t pagetable)
   }
   kfree((void*)pagetable);
 }
+/** xv6-labs-2020 lab3:Print a page table (easy)
+ * print that pagetable in the format described below.
+ */
+void vmprint(pagetable_t pagetable){
+  printf("page table %p\n", pagetable);
+  vmprint_level(pagetable, 1);
+}
+
+void vmprint_level(pagetable_t pagetable, uint64 level){
+  for(int i=0;i<512;i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      uint64 child = PTE2PA(pte);
+      for(int j=0;j<level;j++){
+        if(j>0){
+          printf(" ");
+        }
+        printf("..");}
+      printf("%d: pte %p pa %p\n", i, pte, child);
+
+      // check if this PTE points to another page table
+      if((pte & (PTE_R|PTE_W|PTE_X))==0)
+        // not a leaf → recurse
+        vmprint_level((pagetable_t)child, level+1);
+  }
+}
+}
+
 
 // Free user memory pages,
 // then free page-table pages.
@@ -464,3 +522,5 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+

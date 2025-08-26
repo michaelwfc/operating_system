@@ -9,11 +9,6 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
-// declare sysinfo 
-struct sysinfo; // add sysinfo structure
-uint64 sysinfo(uint64 addr); // add sysinfo prototype
-uint64 freemomory(void);
-uint64 nproc(void);
 
 // bio.c
 void            binit(void);
@@ -111,6 +106,12 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+// ======== specialized for xv6-labs-2020: lab2 syscall =========
+struct sysinfo; // declare sysinfo structure
+uint64 sysinfo(uint64 addr); // add sysinfo prototype
+uint64 freemomory(void);
+uint64 nproc(void);
+
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -179,7 +180,8 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 // ======== specialized for pgtbl ---- part1 & 2 & 3 =========
-void            vmprint(pagetable_t);
+void            vmprint(pagetable_t); // xv6-labs-2020: lab3
+void            vmprint_level(pagetable_t pagetable, uint64 level);
 void            kvmmapkern(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     kvmcreate();
 void            kvmfree(pagetable_t, uint64);

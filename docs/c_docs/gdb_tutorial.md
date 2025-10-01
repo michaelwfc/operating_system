@@ -1,4 +1,4 @@
-# gdb (GNU Debugger)
+# gdb (GNU Debugger) Introduction
 
 - Purpose: gdb is an interactive debugger that allows you to run a program, inspect its behavior in real-time, set breakpoints, step through code, and examine variables and memory.
 - Functionality: It provides control over the execution of your program, allowing you to pause, step through code, change variable values, and diagnose runtime issues.
@@ -11,20 +11,82 @@ and assembly code (we are not giving you the source code for most of your bomb),
 set memory watch points, and write scripts.
 
 ## Resources:
+
+
 - The CS:APP web site
 http://csapp.cs.cmu.edu/public/students.html
 - Beej's Quick Guide to GDB (based on the very handy gdb -tui mode)
   https://beej.us/guide/bggdb/
 - Two-page x86-64 GDB cheat sheet
-- 
 
 – To keep the bomb from blowing up every time you type in a wrong input, you’ll want to learn how to set breakpoints.
 – For online documentation, type “help” at the gdb command prompt, or type “man gdb”,
 or “info gdb” at a Unix prompt. Some people also like to run gdb under gdb-mode in
 emacs.
 
-## 3.10.2 Using the gdb Debugger
 
+You’ve got a few good options, depending on how deep you want to go:
+
+---
+
+## Official GNU GDB Documentation
+
+* **GNU Project Manual (most complete)**
+  👉 [https://sourceware.org/gdb/current/onlinedocs/](https://sourceware.org/gdb/current/onlinedocs/)
+  This is the *current* manual for GDB. It’s pretty thorough (sometimes overwhelming).
+
+  * Chapter 1–2: basics (running, breakpoints, stepping).
+  * Chapter 15: working with remote targets (useful for xv6 + QEMU).
+  * Chapter 17: gdbinit files and scripting.
+
+* **PDF / HTML versions** are downloadable too:
+  [https://sourceware.org/gdb/documentation/](https://sourceware.org/gdb/documentation/)
+
+---
+
+## Local man/info pages 
+<!-- (already on your system) -->
+
+If you have GDB installed, you can check:
+
+```bash
+man gdb
+```
+
+or
+
+```bash
+info gdb
+```
+
+The `info gdb` one is essentially the full manual in your terminal (navigable).
+
+---
+
+## Quick Reference
+
+* GNU has an official **cheat sheet**:
+  [https://users.ece.utexas.edu/\~adnan/gdb-refcard.pdf](https://users.ece.utexas.edu/~adnan/gdb-refcard.pdf)
+  Great if you just want the common commands on one page.
+
+---
+
+## GDB Source Code + Examples
+
+* GDB’s Git repo (with tests and docs):
+  [https://sourceware.org/git/?p=binutils-gdb.git](https://sourceware.org/git/?p=binutils-gdb.git)
+* There’s also the **Debugging with GDB** book (published by Free Software Foundation). The online manual is the same text.
+
+
+
+Do you want me to make you a **curated list of just the GDB commands that matter for xv6 + QEMU debugging** (so you don’t have to wade through the full 500-page manual)?
+
+
+
+
+# Using the gdb Debugger
+
+## gdb commmon commands
 Figure 3.39 Example gdb commands. These examples illustrate some of the ways gdb supports debugging of machine-level programs.
 
 |Command                         |Effect                                                       |
@@ -49,8 +111,8 @@ Figure 3.39 Example gdb commands. These examples illustrate some of the ways gdb
 |disas multstore                 |Disassemble function multstore     |
 |disas 0x400544                  |Disassemble function around address 0x400544     |
 |disas 0x400540, 0x40054d        | Disassemble code within specified address range     |
-|print /x $rip                   |Print program counter in hex     |
-|***Examining data***                |                                                             |  
+|***Examining data***            |                                                             |
+|print /x $rip                   |Print program counter in hex     | 
 |print $rax                      |Print contents of %rax in decimal     |
 |print /x $rax                   |Print contents of %rax in hex     |
 |print /t $rax                   |Print contents of %rax in binary     |
@@ -67,25 +129,43 @@ Figure 3.39 Example gdb commands. These examples illustrate some of the ways gdb
 |help                            |Get information about gdb     |
 
 
-## 1. Compile the Program with Debugging Information
-
+## Compile the Program with Debugging Information
+- https://sourceware.org/gdb/current/onlinedocs/gdb.html/Compilation.html#Compilation
+  
 To debug a C program using gdb, you need to compile your program with the -g flag, which includes debugging information in the executable.
 
+This debugging information is stored in the object file; it describes the data type of each variable or function and the correspondence between source line numbers and addresses in the executable code.
+
 ```bash
-gcc -g -o myprogram myprogram.c
+# -O0 Disables optimization (useful for debugging).
+gcc -g -O0 -o myprogram myprogram.c
 ```
+
 This command compiles myprogram.c into an executable named myprogram, including debugging symbols.
 
-##  2. Start gdb
 
-```shell
+## Inovoke GDB
+
+https://sourceware.org/gdb/current/onlinedocs/gdb.html/Invoking-GDB.html#Invoking-GDB
+
+```bash
+# specifying an executable program
 # Launch gdb with your compiled program:
 gdb bomb
 >(gdb)
+# attach GDB to process 1234. 
+# specify a process ID as a second argument or use option -p, if you want to debug a running process:
+gdb -p 1234
+
+# Read symbol table from file file
+# -symbols file
+# -s file
+
 ```
 
-## 3. Run the Program
-
+## Start the Program
+- https://sourceware.org/gdb/current/onlinedocs/gdb.html/Starting.html#Starting
+- 
 ```shell
 # To start running your program inside gdb, use the run command. You can also pass arguments to your program if needed:
 (gdb) run
@@ -93,9 +173,13 @@ gdb bomb
 
 # run with arguments from answers.txt
 (gdb) r < answers.txt
+
+
+# start program at the beginning of first instruction
+(gdb) starti
 ```
 
-## 4. Set Breakpoints
+## Set Breakpoints
 
 ```bash
 # add a breakpoint line to the debugger
@@ -116,7 +200,7 @@ Breakpoint 1 at 0x400e37: file bomb.c, line 74.
 
 ```
 
-## 5. Step Through the Code
+## Step Through the Code
 
 ```bash
 # Once a breakpoint is hit, you can step through the code to observe how it executes:
@@ -150,48 +234,12 @@ Breakpoint 1 at 0x400e37: file bomb.c, line 74.
 
 ```
 
-## 6. Inspect Variables
-
-The p (or print) command in gdb is used to evaluate and print the value of an expression, which could be a variable, a complex expression, or a memory address.
-
-```bash
-(gdb) p <expression>
-
-# To check the values of variables, you can use the print command:
-(gdb) print x #This will display the current value of the variable x.
-(gdb) print x + y # Print expression: You can also evaluate expressions:
-
-(gdb) p *ptr  # Dereference a pointer: If ptr is a pointer, this prints the value stored at the memory location ptr points to.
-(gdb) p *argv # Print the address and value of 1st argv
-(gdb) p *argv@argc # Print the address and value of all argv
-
-(gdb) p &x    # Print the address of a variable: This prints the memory address where the variable x is stored.
-
-(gdb) print $rdx # You can also directly print the value of %rdx using the print (or p for short) command with the $ prefix to indicate a register.
-
-(gdb) p (char)$ecx # To print the same value as a character:
-(gdb) p (char*)input_pointer # print` 命令打印字符串
-
-(gdb) print/t $eax # Print the Value in Binary Format:
-(gdb) print/t 0xF3 
-(gdb) print (char)0b1000001 # print the binary representation to character
-
-
-# Format Specifiers in GDB:
-# /t - binary
-# /x - hexadecimal
-# /d - decimal
-# /o - octal
-```
-
-
-
-##  6.1  Inspect memory
+##  Inspect memory
 
 The x command in gdb is used to examine memory. Examine memory (x): View memory at a specific address:
 
 ```bash
-# - x/d <address>: View the memory as a signed integer.
+# - x/d <address>: View the memory as a decimal/signed integer.
 # - x/u <address>: View the memory as an unsigned integer.
 # - x/f <address>: View the memory as a floating-point number.
 # - x/s <address>: View the memory as a null-terminated string.
@@ -236,18 +284,17 @@ The x command in gdb is used to examine memory. Examine memory (x): View memory 
 (gdb) x/8xb $rsp 
 0x5561dc78:     0xc7    0x44    0x24    0x08    0x39    0x37    0x66    0x61
 # This examines 8 bytes of memory starting at the address of $rsp, showing them in hexadecimal.
-```
-The output shows the contents of memory at address `0x5561dc78` as eight consecutive bytes:
-```
+# The output shows the contents of memory at address `0x5561dc78` as eight consecutive bytes:
 0xc7  0x44  0x24  0x08  0x39  0x37  0x66  0x61
 ```
+
+### How to Interpret the Order
 
 On an x86-64 system (which is little-endian), memory is stored in little-endian order. This means that:
 
 - The **first byte** (at the lowest address, `0x5561dc78`) is the **least significant byte (LSB)**.
 - The **last byte** (at the highest address, `0x5561dc7F`) is the **most significant byte (MSB)**.
 
-### How to Interpret the Order
 
 - **In Memory Order (Little-endian):**
   - Address `0x5561dc78`: 0xc7 (LSB)
@@ -266,7 +313,7 @@ On an x86-64 system (which is little-endian), memory is stored in little-endian 
   \]
   This is because the bytes are reversed in significance: the byte 0xc7 is the LSB and 0x61 is the MSB.
 
-### Summary
+Summary
 
 - The bytes are stored in memory in **little-endian order**.
 - The order from the lowest to the highest memory address is:  
@@ -275,7 +322,45 @@ On an x86-64 system (which is little-endian), memory is stored in little-endian 
 
 This ordering is standard on x86-64 systems, where the least significant byte is stored at the lowest address.
 
-## 8. Modify Variables
+## Inspect Variables in C code
+
+The p (or print) command in gdb is used to evaluate and print the value of an expression, which could be a variable, a complex expression, or a memory address.
+
+```bash
+# Format Specifiers in GDB:
+# /t - binary
+# /x - hexadecimal
+# /d - decimal
+# /o - octal
+
+(gdb) p <expression>
+
+# To check the values of variables, you can use the print command:
+(gdb) print x # This will display the current value of the variable x.
+(gdb) print x + y # Print expression: You can also evaluate expressions:
+
+(gdb) p *ptr  # Dereference a pointer: If ptr is a pointer, this prints the value stored at the memory location ptr points to.
+(gdb) p *argv # Print the address and value of 1st argv
+(gdb) p *argv@argc # Print the address and value of all argv
+
+(gdb) p &x    # Print the address of a variable: This prints the memory address where the variable x is stored.
+
+(gdb) print $rdx # You can also directly print the value of %rdx using the print (or p for short) command with the $ prefix to indicate a register.
+
+(gdb) p (char)$ecx # To print the same value as a character:
+(gdb) p (char*)input_pointer # print` 命令打印字符串
+
+(gdb) print/t $eax # Print the Value in Binary Format:
+(gdb) print/t 0xF3 
+(gdb) print (char)0b1000001 # print the binary representation to character
+
+# print a pointer context
+(gdb) p *ctx
+# print event
+(gdb) p ev
+```
+
+### Modify Variables
 
 You can modify the value of variables while the program is paused:
 
@@ -284,6 +369,21 @@ You can modify the value of variables while the program is paused:
 ```
 
 This changes the value of x to 10.
+
+## track the flow of execution
+```bash
+# These commands help you track the flow of execution in your program while debugging with gdb.
+(gdb) where: Shows the current call stack and highlights the current line of execution.
+(gdb) list         # show nearby source code, Lists the source code around the current line of execution, with the current line highlighted.
+(gdb) info stack         # print stack
+(gdb) info source  # current source file
+(gdb) info line    # Provides detailed information about the current line, including memory addresses.
+(gdb) info args    # Displays the values of all arguments passed to the current function.
+(gdb) backtrace    # This command displays the stack frames, helping you understand how the program arrived at its current state.
+(gdb) frame number  # Switch to a specific frame.
+(gdb) info frame    # Displays the current frame, including the current function and line number.
+(gdb) info locals  #  Shows the values of all local variables in the current stack frame.
+```
 
 
 ## View the machine-level instructions commands
@@ -300,6 +400,7 @@ info: Provides detailed information about various aspects of the program, such a
 (gdb) info <subcommand>
 
 (gdb) info breakpoints # Lists all the breakpoints, watchpoints, and catchpoints currently set in your program.
+(gdb) info reg 
 (gdb) info b
 
 (gdb) info registers # Displays the current contents of all CPU registers.
@@ -325,27 +426,75 @@ rdx    0x7fffffffdde0   140737488344800
 (gdb) info variables
 
 
+(gdb) info inferiors
+  Num  Description       Executable        
+* 1    process 1         /mnt/e/projects/operating_system/xv6_labs_2021/kernel/kernel 
+
+# use pmamp to print process memory maps
+(gdb) !pmap $pid
+# print process memory maps inside gdb
+(gdb) info proc mappings
+
+#visulize the process structure 
 
 ```
-#### View the Call Stack
-The call stack shows the sequence of function calls that led to the current point in the program:
-
+##  tui window
 ```bash
-# These commands help you track the flow of execution in your program while debugging with gdb.
-(gdb) where: Shows the current call stack and highlights the current line of execution.
-(gdb) list         # show nearby source code, Lists the source code around the current line of execution, with the current line highlighted.
+# enable tui window: terminal user interface
+(gdb) tui enable
+# (gdb) tui disabble
+# Switch to normal mode temporarily
+# Press Ctrl+X then A to toggle between TUI and normal mode
+# In normal mode, use up/down arrows for command history
+# Press Ctrl+X then A again to return to TUI mode
 
-info stack         # print stack
-(gdb) info source  # current source file
-(gdb) info line    # Provides detailed information about the current line, including memory addresses.
-(gdb) info reg 
-(gdb) info args    # Displays the values of all arguments passed to the current function.
-(gdb) backtrace    # This command displays the stack frames, helping you understand how the program arrived at its current state.
-(gdb) frame number  # Switch to a specific frame.
-(gdb) info frame    # Displays the current frame, including the current function and line number.
+# In this mode:
+# Up/Down arrows control source code scrolling - They move through the source code display rather than command history
+# Left/Right arrows also control the TUI interface
 
-(gdb) info locals  #  Shows the values of all local variables in the current stack frame.
+
+# Use Ctrl+P and Ctrl+N
+# Ctrl+P - Recall previous command (equivalent to up arrow in normal mode)
+# Ctrl+N - Recall next command (equivalent to down arrow in normal mode)
+
+# show the asm code
+(gdb) layout asm
+(gdb) layout reg
+(gdb) focus reg
+(gdb) focus asm
+(gdb) layout src # show the source code in window
+# split window to show both asm and source code
+(gdb) layout split
 ```
+
+
+###  x/4i
+Inspect the instructions at a given address
+```bash
+(gdb) x/9i $pc-32
+   0x3ffffff06e:        csrr    t0,sscratch
+   0x3ffffff072:        sd      t0,112(a0)
+   0x3ffffff076:        ld      sp,8(a0)
+   0x3ffffff07a:        ld      tp,32(a0)
+   0x3ffffff07e:        ld      t0,16(a0)
+   0x3ffffff082:        ld      t1,0(a0)
+   0x3ffffff086:        csrw    satp,t1
+   0x3ffffff08a:        sfence.vma
+=> 0x3ffffff08e:        jr      t0
+
+(gdb) p/x $t0
+$28 = 0x800029ee
+(gdb) x $t0
+0x800029ee <usertrap>:  0xec061101
+
+(gdb) x/4i $t0
+   0x800029ee <usertrap>:       addi    sp,sp,-32
+   0x800029f0 <usertrap+2>:     sd      ra,24(sp)
+   0x800029f2 <usertrap+4>:     sd      s0,16(sp)
+   0x800029f4 <usertrap+6>:     sd      s1,8(sp)
+
+```
+
 
 ### disas 
 
@@ -403,9 +552,8 @@ objdump -d --disassemble=my_function myprogram
 
 Use this to disassemble all of the code in the bomb. You can also just look at individual functions.
 Reading the assembler code can tell you how the bomb works.
-Although objdump -d gives you a lot of information, it doesn’t tell you the whole story. Calls to
-system-level functions are displayed in a cryptic form. For example, a call to sscanf might appear
-as:
+Although objdump -d gives you a lot of information, it doesn’t tell you the whole story. 
+Calls to system-level functions are displayed in a cryptic form. For example, a call to sscanf might appear as:
 8048c36: e8 99 fc ff ff call 80488d4 <_init+0x1a0>
 To determine that the call was to sscanf, you would need to disassemble within gdb.
 
@@ -418,3 +566,6 @@ Looking for a particular tool? How about documentation? Don’t forget, the comm
 and info are your friends. In particular, man ascii might come in useful. info gas will give you
 more than you ever wanted to know about the GNU Assembler. Also, the web may also be a treasure trove
 of information. If you get stumped, feel free to ask your instructor for help.
+
+
+

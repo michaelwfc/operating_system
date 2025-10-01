@@ -1,5 +1,28 @@
 {
   "tasks": [
+          {
+      "label": "Build kernel (make)",
+      "type": "shell",
+      "command": "make",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Run qemu-gdb",
+      "type": "shell",
+      "command": "make qemu-gdb",
+      "isBackground": false,
+      "presentation": {
+        "panel": "dedicated",
+        "echo": true,
+        "reveal": "always",
+        "focus": true
+      }
+    ,}
+
     {
       "type": "cppbuild",
       "label": "C/C++: gcc build active file",

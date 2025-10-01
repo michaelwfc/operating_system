@@ -58,14 +58,27 @@ If an application in user mode attempts to execute **a privileged instruction**,
   - kernel
   The software running in kernel space (or in supervisor mode) is called the kernel.
 
-## How to invoke a kernel function
+## ecall: How to invoke a kernel function
 An application that wants to invoke a kernel function (e.g., the read system call in xv6) must transition to the kernel; an application **cannot** invoke a kernel function directly.
 
 
 CPUs provide a special instruction that switches the CPU from user mode to supervisor mode and enters the kernel at an entry point specified by the kernel. 
 (RISC-V provides the **ecall** instruction for this purpose.)
 
+### ecall
 
+`ecall` is a system call instruction that transfers control from user mode to kernel mode
+
+What ecall does:
+- ecall (Environment Call) is a RISC-V instruction that triggers a system call
+- It causes a trap/exception that transfers control to the kernel's system call handler
+- The processor switches from user mode to supervisor/machine mode
+- Control jumps to the kernel's trap handler (usually in `stvec` register (trampoline page))
+  uservec → saves registers, switches to kernel stack
+  usertrap() → handles the trap in kernel
+  sys_write() → actual syscall implementation
+  usertrapret() → prepares return to user
+  userret → restores registers, returns to user
 
 It is important that the kernel control the entry point for transitions to supervisor mode;
 ##  user mode.
@@ -285,53 +298,3 @@ The system call table (kernel/syscall.c:108) maps SYS_EXEC to sys_exec, which th
 Then it starts a shell on the console. The system is up.
 
 
-### 4.3 Code: Calling system calls
-
-1. initcode.S places the arguments for exec in registers a0 and a1, and puts the system call number in a7. 
-2. System call numbers match the entries in the syscalls array, a table of function pointers (kernel/syscall.c:108). 
-3. The ecall instruction traps into the kernel and causes uservec, usertrap, and then syscall to execute, as we saw above.
-4. syscall (kernel/syscall.c:133) retrieves the system call number from the saved a7 in the trapframe and uses it to index into syscalls. 
-For the first system call, a7 contains SYS_exec (kernel/syscall.h:8), resulting in a call to the system call implementation function sys_exec.
-5. When sys_exec returns, syscall records its return value in p->trapframe->a0. 
-This will cause the original user-space call to exec() to return that value, since the C calling convention on RISC-V places return values in a0. 
-System calls conventionally return negative numbers to indicate errors, and zero or positive numbers for success. If the system call number is invalid, syscall prints an error and returns -1.
-
-### 4.4 Code: System call arguments
-
-
-#### Parameter handling
-- `argint` to retrieve the integer argument
-- `argfd()` to retrieve the file descriptor argument
-- `argaddr()` to get the user-space pointer for the stat structure
-  
-
-System call implementations in the kernel need to find the arguments passed by user code. 
-Because user code calls `system call wrapper functions`, the arguments are initially where the RISC-V Calling convention places them: `in registers`. 
-
-`The kernel trap code` saves user registers to the current process’s `trap frame`, where kernel code can find them. 
-The kernel functions `argint`, `argaddr`, and `argfd` retrieve the n’th system call argument from the `trap frame` as an integer, pointer, or a file descriptor. 
-They all call `argraw` to retrieve the appropriate saved user register (kernel/syscall.c:35).
-Some system calls pass pointers as arguments, and the kernel must use those pointers to read or write user memory. 
-
-The exec system call, for example, passes the kernel an array of pointers referring to string arguments in user space. These pointers pose two challenges. 
-- First, the user program may be buggy or malicious, and may pass the kernel an invalid pointer or a pointer intended to trick the kernel into accessing kernel memory instead of user memory. 
-- Second, the xv6 kernel page table mappings are not the same as the user page table mappings, so the kernel cannot use ordinary instructions to load or store from user-supplied addresses.
-
-
-#### Safely transfer data to and from user-supplied addresses
-- `fetchstr`
-- `copyinstr`
-- `walkaddr`
-- `copyout`
-
-The kernel implements functions that safely transfer data to and from user-supplied addresses.
-`fetchstr` is an example (kernel/syscall.c:25).0
-File system calls such as exec use fetchstr to retrieve string file-name arguments from user space. 
-fetchstr calls `copyinstr` to do the hard work.
-
-`copyinstr` (kernel/vm.c:398) copies up to max bytes to dst from virtual address srcva in the user page table pagetable. 
-Since pagetable is not the current page table, copyinstr uses `walkaddr` (which calls walk) to look up srcva in pagetable, yielding physical address pa0. 
-
-The kernel maps each physical RAM address to the corresponding kernel virtual address, so copyinstr can directly copy string bytes from pa0 to dst. 
-walkaddr (kernel/vm.c:104) checks that the user-supplied virtual address is part of the process’s user address space, so programs cannot trick the kernel into reading other memory. 
-A similar function, `copyout`, copies data from the kernel to a user-supplied address.

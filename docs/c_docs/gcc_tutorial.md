@@ -62,7 +62,7 @@ Here is a table listing the most common `gcc` flags along with their description
 | `-Werror`                | Treats all warnings as errors (prevents compilation if there are any warnings).|
 | `-std=gnu99`                | By default, the gcc compiler uses the latest C standard (e.g., C11 or C17), Specifies the C language standard to use. `gnu99` is the GNU extension of the C99 standard. It allows additional features and extensions, like inline assembly and certain built-in functions, not available in strict C99. |
 | `-O0`                    | Disables optimization (useful for debugging).                                 |
-| `-O1`, `-O2`, `-O3`      | Different levels of optimization (higher values increase optimization).       Optimization Flag: Avoid using optimization flags (such as -O2) when compiling your program for debugging, as optimization can make debugging difficult by reordering or removing code. Stick to -g for debugging purposes      |
+| `-O1`, `-O2`, `-O3`      | Different levels of optimization (higher values increase optimization).       Optimization Flag: Avoid using optimization flags (such as -O2) when compiling your program for debugging, as optimization can make debugging difficult by reordering or removing code. - tick to -g for debugging purposes      |
 | `-U_FORTIFY_SOURCE`         | Unsets the `_FORTIFY_SOURCE` macro, which controls certain optimizations that can improve security for certain functions (like `memcpy`, `printf`, etc.) by adding bounds checks. Unsetting it disables these checks. |
 | `-D_FORTIFY_SOURCE`         | Defines the `_FORTIFY_SOURCE` macro. It enables various compiler-level optimizations to enhance security by performing bounds checking on certain standard library functions. A common value for this is `2` for stricter checks. |
 | `-D__USE_XOPEN_EXTENDED`    | Defines the `__USE_XOPEN_EXTENDED` macro, enabling certain POSIX extensions that provide additional system calls and functions beyond the basic POSIX specification (e.g., `strptime`, `strtok_r`, etc.). |
@@ -91,3 +91,35 @@ Here is a table listing the most common `gcc` flags along with their description
 | `-march=native`          | Optimizes code for the architecture of the current machine.                   |
 
 This table includes some of the most commonly used flags with `gcc`, but there are many other specialized flags for various use cases. You can always refer to the `gcc` documentation (`man gcc` or `gcc --help`) for a comprehensive list of available flags.
+
+
+# gcc vs clang
+
+## GCC（GNU Compiler Collection）
+- 出自 GNU 项目，最早是自由软件运动的核心工具之一，历史悠久（1987 年就有）。
+- 是一个“整体式”编译器，前端、中间表示、后端耦合紧密。 优化做得很深，但代码基复杂，扩展不容易。
+- 历史悠久，性能稳健，交叉编译/嵌入式成熟
+  
+
+## Clang（C Language Family Frontend for LLVM）
+- 基于 LLVM 框架，2007 年由苹果主导开发。
+- clang 是前端，负责编译 C/C++/Objective-C → LLVM IR。
+- LLVM 后端做优化、生成目标代码。
+- 模块化、错误信息清晰、IDE/工具链友好、研究和教学利器
+
+### Clang/LLVM 工具生态
+- clangd: 提供 C/C++ 语言服务器（VSCode、Vim、IDEA 都依赖它）。
+- clang-tidy: 自动代码检查和重构工具。
+- asan/tsan/msan 等运行时检测工具。
+- 更适合做“IDE 友好的智能分析”。
+
+### 在 WSL Ubuntu 用 Clang
+```bash
+sudo apt update
+sudo apt install clang clangd lldb
+
+
+clang main.c -o main
+./main
+```
+

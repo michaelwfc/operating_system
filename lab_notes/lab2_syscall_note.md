@@ -36,10 +36,17 @@ Great question 🙂 — you’re basically asking how **xv6 wires together user 
 * For each syscall (like `fork`, `write`, etc.), it emits a small wrapper like:
 
 ```asm
+.global fork
 fork:
     li a7, SYS_fork   # load syscall number into a7
     ecall             # trap into the kernel
     ret
+
+.global write
+write:
+ li a7, SYS_write
+ ecall
+ ret
 ```
 
 * So when you call `fork()` in user space:
@@ -50,7 +57,7 @@ fork:
 
 ---
 
-## 🔹 Kernel-side system call handling
+## Kernel-side system call handling
 
 ### `kernel/syscall.h`
 

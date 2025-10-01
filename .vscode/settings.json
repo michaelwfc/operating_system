@@ -1,9 +1,19 @@
 {
+  // "C_Cpp.default.compilerPath": "/usr/bin/gcc",
+  "C_Cpp.default.compilerPath": "/usr/bin/clang",
+  "clangd.path": "/usr/bin/clangd",
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/xv6_labs_2021"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.formatting": "disabled",
+  "C_Cpp.errorSquiggles": "disabled",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cpptools",
+
   "workbench.colorTheme": "Default Dark+",
   "files.autoSave": "onFocusChange",
   "terminal.integrated.defaultProfile.windows": "Ubuntu",
   "http.proxyStrictSSL": false,
-
 
   "window.zoomLevel": 1,
   "autoDocstring.docstringFormat": "google-notypes",
@@ -71,6 +81,5 @@
     "spinlock.h": "c",
     "riscv.h": "c",
     "memlayout.h": "c"
-  },
-  "C_Cpp.default.compilerPath": "/usr/bin/gcc"
+  }
 }

@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+
+  "configurations": [
+     {
+      "name": "Attach to QEMU (gdb-multiarch)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/kernel/kernel",
+      "cwd": "${workspaceFolder}",
+      "miDebuggerServerAddress": "127.0.0.1:26000",
+      "miDebuggerPath": "/usr/bin/gdb-multiarch",
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "set riscv architecture",
+          "text": "set architecture riscv:rv64",
+          "ignoreFailures": false
+        },
+        {
+          "description": "load kernel symbols",
+          "text": "symbol-file ${workspaceFolder}/kernel/kernel",
+          "ignoreFailures": true
+        },
+        {
+          "description": "enable pending breakpoints",
+          "text": "set breakpoint pending on",
+          "ignoreFailures": true
+        }
+      ],
+      "logging": {
+        "engineLogging": false,
+        "trace": false
+      }
+    }
+  ]
+}

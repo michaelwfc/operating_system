@@ -1,0 +1,8 @@
+set confirm off
+set architecture riscv:rv64
+symbol-file kernel/kernel
+set disassemble-next-line auto
+set riscv use-compressed-breakpoints yes
+set disassemble-next-line on
+set print pretty on 
+set print array on

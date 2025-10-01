@@ -21,6 +21,7 @@ static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
+extern pagetable_t kernel_pagetable; 
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -57,10 +58,8 @@ procinit(void)
       if(pa == 0)
         panic("kalloc");
       uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      kvmmap(kernel_pagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
-
-      // p->kstack = KSTACK((int) (p - proc));
   }
   kvminithart();
 }
@@ -193,7 +192,7 @@ proc_pagetable(struct proc *p)
 
   // map the trampoline code (for system call return) at the highest user virtual address.
   // only the supervisor uses it, on the way to/from user space, so not PTE_U.
-  if(mappages(pagetable, TRAMPOLINE, PGSIZE,
+   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
     uvmfree(pagetable, 0);
     return 0;

@@ -15,45 +15,57 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
-/*
- * create a direct-map page table for the kernel.
- * Initialize the one kernel_pagetable
- */
+// Initialize the one kernel_pagetable
 void
 kvminit(void)
 {
+  kernel_pagetable = kvmmake();
+}
 
-  kernel_pagetable = (pagetable_t) kalloc();  // allocate a physical page for the top-level page directory
-  memset(kernel_pagetable, 0, PGSIZE);
+/*
+ * create a direct-map page table for the kernel.
+ */
+pagetable_t
+kvmmake(void)
+{
 
-  memset(kernel_pagetable, 0, PGSIZE);   // zero it out, so that all the PTEs are zero.
+  pagetable_t kpgtbl = (pagetable_t) kalloc();  // allocate a physical page for the top-level page directory
+
+  memset(kpgtbl, 0, PGSIZE);   // zero it out, so that all the PTEs are zero.
 
   // uart registers
-  kvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
   // virtio mmio disk interface
-  kvmmap( VIRTIO0,  VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  kvmmap(kpgtbl, VIRTIO0,  VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
   // CLINT
-  kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  kvmmap(kpgtbl, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
   // PLIC
-  kvmmap( PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  kvmmap(kpgtbl,  PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
   // map kernel text executable and read-only.
-  kvmmap( KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  kvmmap(kpgtbl,  KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
   // map kernel data and the physical RAM we'll make use of.
-  kvmmap( (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  kvmmap(kpgtbl,  (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
-  kvmmap( TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  kvmmap(kpgtbl,  TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   // map kernel stacks
   // proc_mapstacks(kernel_pagetable);
+  return kpgtbl;
 }
 
+// free a kernel pagetable (only page-table pages, not mapped leaf pages)
+// void 
+// kvmfree(pagetable_t kpgtbl)
+// { 
+//   freewalk(kpgtbl); // freewalk() frees only the page-table pages
+// }
 
 
 // Switch h/w page table register to the kernel's page table,
@@ -65,12 +77,15 @@ kvminithart()
   sfence_vma();
 }
 
-// Return the address of the PTE in page table pagetable
-// that corresponds to virtual address va.  If alloc!=0,
-// create any required page-table pages.
+// Return the address of the PTE in page table pagetable that corresponds to virtual address va.  
+// If alloc!=0, create any required page-table pages.
 //
-// The risc-v Sv39 scheme has three levels of page-table
-// pages. A page-table page contains 512 64-bit PTEs.
+// Page table page size = 4 KB = 512 entries × 8 bytes.
+// The risc-v Sv39 scheme has 3 levels of page-table pages. 
+// Each level index is 9 bits → selects an entry from a page table (which has 512 entries).
+// A page-table page contains 512 PTEs.
+// Each entry is a pte_t (64-bit).
+
 // A 64-bit virtual address is split into five fields:
 //   39..63 -- must be zero.
 //   30..38 -- 9 bits of level-2 index.
@@ -106,9 +121,6 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    // PX(level, va):  extracts the right 9 bits for that level  ->  index in that level page table 
-    // pagetable[PX(level, va)]: get the entry of that level page table at index
-    // &pagetable[PX(level, va)]: get the addrees of that enry and store it in pte,so pte points to the entry in the current page table for this virtual address.
     pte_t *pte = &pagetable[PX(level, va)]; 
     if(*pte & PTE_V) {
       //already valid: follow the pointer to next-level page table
@@ -122,8 +134,6 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
-      // Fill the current PTE with the physical address of the new page table (PA2PTE(pagetable)) and mark valid (PTE_V).
-      // This is how xv6 creates new page tables on demand.
       *pte = PA2PTE(pagetable) | PTE_V; 
     }
   }
@@ -159,9 +169,9 @@ walkaddr(pagetable_t pagetable, uint64 va)
 // only used when booting.
 // does not flush TLB or enable paging.
 void
-kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
+kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
+  if(mappages(kpgtbl, va, sz, pa, perm) != 0)
     panic("kvmmap");
 }
 
@@ -315,6 +325,12 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 
 // Recursively free page-table pages.
 // All leaf mappings must already have been removed.
+/*
+A page table is two-layered conceptually:
+1. Page-table pages — the 4KB pages that store pte entries (the tree structure).
+2. Leaf physical pages — the actual data pages (code, heap, stack, device pages) that PTEs point to.
+freewalk() frees only the first: the memory used by the page-table pages themselves. It does not free the data pages pointed to by leaf PTEs.
+*/
 void
 freewalk(pagetable_t pagetable)
 {
@@ -350,7 +366,7 @@ void vmprint_level(pagetable_t pagetable, uint64 level){
           printf(" ");
         }
         printf("..");}
-      printf("%d: pte %p pa %p\n", i, pte, child);
+      printf("%d: pte %p pa %p flag %p\n", i, pte, child, pte&0x3ff);
 
       // check if this PTE points to another page table
       if((pte & (PTE_R|PTE_W|PTE_X))==0)

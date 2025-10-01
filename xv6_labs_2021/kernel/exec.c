@@ -60,13 +60,15 @@ exec(char *path, char **argv)
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
+    //allocate physical memory for that segment.
     uint64 sz1;
-    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0) //allocate physical memory for that segment.
+    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0) 
       goto bad;
     sz = sz1;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
-    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)  //Copy segment contents into the allocated memory using loadseg()
+    //Copy segment contents into the allocated memory using loadseg()
+    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)  
       goto bad;
   }
   iunlockput(ip);
@@ -86,7 +88,8 @@ exec(char *path, char **argv)
   // Right below the stack, xv6 reserves a guard page (mapped invalid, so any access will cause a fault).
   sz = PGROUNDUP(sz);
   uint64 sz1;
-  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0) //uvmalloc() is called again to allocate 2 pages for the user stack and guard page.
+  //uvmalloc() is called again to allocate 2 pages for the user stack and guard page.
+  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0) 
     goto bad;
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
@@ -128,8 +131,10 @@ exec(char *path, char **argv)
     
   // Commit to the user image.
   oldpagetable = p->pagetable;
-  p->pagetable = pagetable;  
-  p->sz = sz;
+  p->pagetable = pagetable;   // switch process to new page table
+  //Now the process is logically running with the new address space.
+
+  p->sz = sz;                 // new memory size
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);

@@ -26,7 +26,10 @@ memcmp(const void *v1, const void *v2, uint n)
 
   return 0;
 }
-
+/**
+Copies n bytes from memory starting at src into memory starting at dst.
+Unlike memcpy, it guarantees correctness even if the regions overlap.
+*/
 void*
 memmove(void *dst, const void *src, uint n)
 {
@@ -35,12 +38,16 @@ memmove(void *dst, const void *src, uint n)
 
   s = src;
   d = dst;
+  // Checks if src is before dst in memory and the ranges overlap.
+  // in this case, we must copy backward.
   if(s < d && s + n > d){
     s += n;
     d += n;
     while(n-- > 0)
       *--d = *--s;
   } else
+  //No overlap (copy forwards)
+  // Safe because either: dst is completely before src, or no overlap.
     while(n-- > 0)
       *d++ = *s++;
 

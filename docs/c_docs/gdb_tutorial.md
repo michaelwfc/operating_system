@@ -375,6 +375,11 @@ This changes the value of x to 10.
 # These commands help you track the flow of execution in your program while debugging with gdb.
 (gdb) where: Shows the current call stack and highlights the current line of execution.
 (gdb) list         # show nearby source code, Lists the source code around the current line of execution, with the current line highlighted.
+(gdb) list *$pc    # Print source code at current PC:
+(gdb) list *$pc,*$pc+10   # Show specific number of lines around PC:
+
+(gdb) disassemble /s $pc,+10  # Disassemble with source interleaved:
+
 (gdb) info stack         # print stack
 (gdb) info source  # current source file
 (gdb) info line    # Provides detailed information about the current line, including memory addresses.
@@ -465,6 +470,9 @@ rdx    0x7fffffffdde0   140737488344800
 (gdb) layout src # show the source code in window
 # split window to show both asm and source code
 (gdb) layout split
+
+
+(gdb) tui disabble
 ```
 
 

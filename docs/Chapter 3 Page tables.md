@@ -963,613 +963,8 @@ kvminithart()
 
 # 3.7 Code: sbrk
 
-# First user process: userinit()
 
-In xv6, the first user program is `user/init.c`. This is a fundamental part of how Unix-like operating systems bootstrap their user-space environment.
 
-
-The init program is a simple user-space program that serves as the ancestor of all other user processes. In xv6, it's defined in init.c and has a very specific role: it creates and manages the initial `shell` processes.
-
-
-## How the first user program is started
-
-The process of starting the first user program involves several steps:
-
-1. **Kernel initialization in main()**: The xv6 kernel boots up, initializes hardware, sets up memory management, process management, etc.
-but no user processes exist yet
-
-2. **Creating the first process in userinit()**: In the kernel's `main()` function (in `main.c`), after all kernel subsystems are initialized, the kernel calls `userinit()`.
-
-**`userinit()` function**: This kernel function (typically in `proc.c`) creates the very first user process. It:
-  - Allocates a process control block (PCB)
-  - Sets up the process's memory space
-  - loads hardcoded initcode into its memory
-  - Sets up the process's initial registers and stack
-  - Marks the process as ready to run
-
-3. **Process scheduling in scheduler()**: The kernel's scheduler eventually picks up this first process and starts executing it in user mode.
-
-First context switch: Scheduler runs the first user process (initcode)
-The scheduler code is typically located in the `scheduler()` function in `proc.c`. This is the main scheduling loop that runs on each CPU core.
-
-4. initcode executes: Makes exec("/init") system call
-
-5. Kernel loads /init: Filesystem is now available, loads real init program
-
-6. Normal operation: /init runs and can create other processes normally
-
-
-## initcode
-This is a clever bootstrapping technique that solves a fundamental chicken-and-egg problem in operating system initialization.
-
-In xv6, `initcode` is a small piece of assembly code that becomes the initial user-space process. It's compiled from `user/initcode.S` and embedded as raw bytes in the kernel (kernel/proc.c) as an array called `initcode[]`.
-
-
-### The Chicken-and-Egg Problem
-
-The kernel needs to start the first user process, but there's a circular dependency:
-
-1. To run a user program from the filesystem (like `/init`), you need system calls like `exec()`
-2. But system calls can only be made from user mode (user processes)
-3. But to have a user process, you first need to load a program from the filesystem
-4. But to load from the filesystem, you need system calls...
-   
-### Why Use `initcode`?
-
-The `initcode` array breaks this cycle by providing a tiny, hardcoded user program that's embedded directly in the kernel binary. Here's why this approach works:
-
-#### 1. **No filesystem dependency**
-- `initcode` is compiled into the kernel itself as raw bytes
-- No need to read from disk or filesystem during the critical first process creation
-- The kernel can directly copy these bytes into the first process's memory
-
-#### 2. **Minimal bridge program**
-- The `initcode` program is extremely simple - it just calls `exec("/init")`
-- It's written in assembly and compiled to the smallest possible size
-- Its only job is to bootstrap the "real" init program
-
-#### 3. **Clean transition**
-- Once `initcode` executes `exec("/init")`, it gets completely replaced by the actual `/init` program
-- The process ID remains the same (PID 1), but now it's running the proper init program from the filesystem
-- After this point, all subsequent processes can be created normally using `fork()` and `exec()`
-
-### Why Not Load `/init` Directly?
-
-The kernel could theoretically load `/init` directly, but that would require:
-- Filesystem drivers to be fully initialized
-- Complex file loading code in the kernel
-- Mixing user program loading logic with kernel initialization
-
-The `initcode` approach keeps the kernel's job simple: just copy some bytes into memory and start execution. The actual program loading from filesystem happens in user mode via the `exec()` system call, which is cleaner and more consistent with how all other programs are loaded.
-
-This is a classic example of using a small, simple bootstrap program to enable a more complex system.
-
-
-
-## The `init` program's behavior
-
-Once `init` starts running, it typically:
-- Opens file descriptors 0, 1, and 2 (stdin, stdout, stderr) connected to the console
-- Forks child processes to run shell instances
-- Waits for child processes and restarts them if they exit
-- Essentially acts as the parent of all user processes
-
-The transition from kernel mode to user mode for the first time is a critical moment in the boot process - it marks the point where the system moves from pure kernel execution to having actual user programs running.
-
-This design follows the traditional Unix model where `init` (process ID 1) is the root of the entire process tree in user space.
-
-
-
-## Debug First user process
-### Debug main
-```c
-// start() jumps here in supervisor mode on all CPUs.
-void
-main()
-{
-  if(cpuid() == 0){
-    consoleinit();
-    printfinit();
-    printf("\n");
-    printf("xv6 kernel is booting\n");
-    printf("\n");
-    kinit();         // physical page allocator
-    kvminit();       // create kernel page table
-    kvminithart();   // turn on paging
-    procinit();      // process table
-    trapinit();      // trap vectors
-    trapinithart();  // install kernel trap vector
-    plicinit();      // set up interrupt controller
-    plicinithart();  // ask PLIC for device interrupts
-    binit();         // buffer cache
-    iinit();         // inode cache
-    fileinit();      // file table
-    virtio_disk_init(); // emulated hard disk
-    userinit();      // first user process
-    __sync_synchronize();
-    started = 1;
-  } else {
-    while(started == 0)
-      ;
-    __sync_synchronize();
-    printf("hart %d starting\n", cpuid());
-    kvminithart();    // turn on paging
-    trapinithart();   // install kernel trap vector
-    plicinithart();   // ask PLIC for device interrupts
-  }
-
-  scheduler();        
-}
-
-```
-
-### Debug userinit
-
-```c
-// a user program that calls exec("/init")
-// od -t xC initcode
-uchar initcode[] = {
-  0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
-  0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
-  0x93, 0x08, 0x70, 0x00, 0x73, 0x00, 0x00, 0x00,
-  0x93, 0x08, 0x20, 0x00, 0x73, 0x00, 0x00, 0x00,
-  0xef, 0xf0, 0x9f, 0xff, 0x2f, 0x69, 0x6e, 0x69,
-  0x74, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00
-};
-
-// Set up first user process.
-void
-userinit(void)
-{
-  struct proc *p;
-
-  p = allocproc();
-  initproc = p;
-  
-  // allocate one user page and copy init's instructions
-  // and data into it.
-  uvminit(p->pagetable, initcode, sizeof(initcode));
-  p->sz = PGSIZE;
-
-  // prepare for the very first "return" from kernel to user.
-  p->trapframe->epc = 0;      // user program counter
-  p->trapframe->sp = PGSIZE;  // user stack pointer
-
-  safestrcpy(p->name, "initcode", sizeof(p->name));
-  p->cwd = namei("/");
-
-  p->state = RUNNABLE;
-
-  release(&p->lock);
-}
-
-
-(gdb) b userinit
-(gdb) c
-Breakpoint 2, userinit () at kernel/proc.c:240
-=> 0x0000000080002d14 <userinit+8>:     97 00 00 00     auipc   ra,0x0
-
-//  p->pid = allocpid(); 
-(gdb) p p
-$2 = (struct proc *) 0x80014d58 <proc>
-
-// the first process
-(gdb) p p->pid
-$1 = 1
-(gdb) p p->pagetable
-$3 = (pagetable_t) 0x87f75000
-
-// Since initcode is embedded as binary data in the kernel, you can examine it like any other global variable:
-(gdb) p initcode
-$4 =   "\027\005\000\000\023\005E\002\227\005\000\000\223\205\065\002\223\bp\000s\000\000\000\223\b \000s\000\000\000\357\360\237\377/init\000\000$\000\000\000\000\000\000\000"
-
-
-(gdb) x/20i initcode
-   0x8000b8d8 <initcode>:       auipc   a0,0x0
-   0x8000b8dc <initcode+4>:     addi    a0,a0,36
-   0x8000b8e0 <initcode+8>:     auipc   a1,0x0
-   0x8000b8e4 <initcode+12>:    addi    a1,a1,35
-   0x8000b8e8 <initcode+16>:    li      a7,7
-   0x8000b8ec <initcode+20>:    ecall
-   0x8000b8f0 <initcode+24>:    li      a7,2
-   0x8000b8f4 <initcode+28>:    ecall
-   0x8000b8f8 <initcode+32>:    jal     ra,0x8000b8f0 <initcode+24>
-   0x8000b8fc <initcode+36>:    0x696e692f
-   0x8000b900 <initcode+40>:    addi    a3,sp,12
-   0x8000b902 <initcode+42>:    fld     fs0,8(s0)
-   0x8000b904 <initcode+44>:    unimp
-   0x8000b906 <initcode+46>:    unimp
-   0x8000b908 <initcode+48>:    unimp
-   0x8000b90a <initcode+50>:    unimp
-   0x8000b90c:  unimp
-   0x8000b90e:  unimp
-   0x8000b910 <states.1772>:    fsd     fa2,96(a3)
-   0x8000b912 <states.1772+2>:  0x8000
-
-// You can also examine it as hexadecimal byte
-(gdb) x/20bx initcode
-0x8000b8d8 <initcode>:  0x17    0x05    0x00    0x00    0x13    0x05    0x45    0x02
-0x8000b8e0 <initcode+8>:        0x97    0x05    0x00    0x00    0x93    0x85    0x35    0x02
-0x8000b8e8 <initcode+16>:       0x93    0x08    0x70    0x00
-
-```
-
-### Debug allocproc
-```c
-// Look in the process table for an UNUSED proc.
-// If found, initialize state required to run in the kernel,
-// and return with p->lock held.
-// If there are no free procs, or a memory allocation fails, return 0.
-static struct proc*
-allocproc(void)
-{
-  struct proc *p;
-
-  // Finding an Unused Process Slot
-  // If found, jumps to found: label with lock still held
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == UNUSED) {
-      goto found;
-    } else {
-      release(&p->lock);
-    }
-  }
-  return 0;
-
-found:
-  // Assigns a unique process ID to the new process
-  p->pid = allocpid();
-
-  // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
-    release(&p->lock);
-    return 0;
-  }
-
-  // An empty user page table.
-  p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  memset(&p->context, 0, sizeof(p->context));
-
-  // Set up new context to start executing at forkret,
-  // which returns to user space.
-  // Sets return address (ra) to forkret function
-  p->context.ra = (uint64)forkret;
-  // Sets stack pointer (sp) to top of kernel stack (stack grows down)
-  // Note: p->kstack was set in procinit() in original xv6
-  p->context.sp = p->kstack + PGSIZE;
-
-  return p;
-}
-
-
-//  p->pagetable = proc_pagetable(p); 
-(gdb) p p->pagetable
-$67 = (pagetable_t) 0x87f75000
-
-// memset(&p->context, 0, sizeof(p->context));
-(gdb) p sizeof(p->context)
-$69 = 112
-
-```
-
-
-### Debug scheduler
-
-```c
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
-void
-scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-  
-  c->proc = 0;
-  for(;;){
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
-    
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-
-
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-
-        found = 1;
-      }
-      release(&p->lock);
-    }
-#if !defined (LAB_FS)
-    if(found == 0) {
-      intr_on();
-      asm volatile("wfi");
-    }
-#else
-    ;
-#endif
-  }
-}
-
-(gdb) p p->pid
-$19 = 1
-
-(gdb) p p->pagetable
-$18 = (pagetable_t) 0x87f75000
-
-// swtch(&c->context, &p->context);
-(gdb) p/x c->context
-$17 = {
-  ra = 0x0,
-  sp = 0x0,
-  s0 = 0x0,
-  s1 = 0x0,
-  s2 = 0x0,
-  s3 = 0x0,
-  s4 = 0x0,
-  s5 = 0x0,
-  s6 = 0x0,
-  s7 = 0x0,
-  s8 = 0x0,
-  s9 = 0x0,
-  s10 = 0x0,
-  s11 = 0x0
-}
-
-(gdb) p/x p->context
-$20 = {
-  ra = 0x800035b2,
-  sp = 0x3fffffe000,
-  s0 = 0x0,
-  s1 = 0x0,
-  s2 = 0x0,
-  s3 = 0x0,
-  s4 = 0x0,
-  s5 = 0x0,
-  s6 = 0x0,
-  s7 = 0x0,
-  s8 = 0x0,
-  s9 = 0x0,
-  s10 = 0x0,
-  s11 = 0x0
-}
-
-// ra (Return Address) = 0x800035b2 <forkret>
-// The ra register contains the return address - where execution should continue after the context switch.
-// Value: 0x800035b2 points to the forkret function
-// Meaning: When swtch() completes and returns, execution will jump to forkret
-// Why forkret?: This is set up during process creation. The first time a process runs, it needs special initialization, which forkret handles
-(gdb) x p->context->ra
-0x800035b2 <forkret>:   0x41
-
-// sp (Stack Pointer) = 0x3fffffe000
-// The sp register points to the process's kernel stack.
-// Value: 0x3fffffe000 is near the top of the kernel stack for this process
-// Meaning: This is where the process's kernel-mode stack is located
-// Important: This is the kernel stack, not the user stack (which is in trapframe->sp)
-
-(gdb) x p->context->sp
-0x3fffffe000:   Cannot access memory at address 0x3fffffe000
-
-// When swtch(&c->context, &p->context) executes:
-// 1. Save scheduler context: Current CPU registers are saved to c->context (which are currently mostly 0 since scheduler just started)
-// 2. Load process context: Process registers are loaded from p->context:
-// ra = 0x800035b2 (forkret)
-// sp = 0x3fffffe000 (kernel stack)
-// Other saved registers (s0-s11) are restored
-// 3. Jump to ra: swtch() returns by jumping to the address in ra, which is forkret
-
-```
-
-### Debug forkret
-
-```c
-// A fork child's very first scheduling by scheduler()
-// will swtch to forkret.
-void
-forkret(void)
-{
-  static int first = 1;
-
-  // Still holding p->lock from scheduler.
-  release(&myproc()->lock);
-
-  if (first) {
-    // File system initialization must be run in the context of a
-    // regular process (e.g., because it calls sleep), and thus cannot
-    // be run from main().
-    first = 0;
-    // Initializes the file system (only for the very first process)
-    fsinit(ROOTDEV);
-  }
-  // Calls usertrapret() to transition to user mode
-  usertrapret();
-}
-
-(gdb) p first
-$22 = 1
-
-```
-
-Why This Design?
-This two-stage approach (scheduler → forkret → user mode) allows:
-- Clean separation: Scheduler handles process selection, forkret handles process initialization
-- Consistent interface: All processes (including the first one) go through the same transition mechanism
-- Proper locking: Process lock is properly managed during the transition
-
-The Complete Flow
-```
-scheduler() finds RUNNABLE process
-    ↓
-swtch() switches to process context
-    ↓ (ra points here)
-forkret() - first-time process setup
-    ↓
-usertrapret() - transition to user mode
-    ↓
-initcode starts executing in user space
-```
-
-### Debug usertrapret in trap.c
-
-```c
-/
-// return to user space
-//
-void
-usertrapret(void)
-{
-  struct proc *p = myproc();
-
-  // we're about to switch the destination of traps from
-  // kerneltrap() to usertrap(), so turn off interrupts until
-  // we're back in user space, where usertrap() is correct.
-  intr_off();
-
-  // send syscalls, interrupts, and exceptions to trampoline.S
-  w_stvec(TRAMPOLINE + (uservec - trampoline));
-
-  // set up trapframe values that uservec will need when
-  // the process next re-enters the kernel.
-  p->trapframe->kernel_satp = r_satp();         // kernel page table
-  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
-  p->trapframe->kernel_trap = (uint64)usertrap;
-  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
-
-  // set up the registers that trampoline.S's sret will use
-  // to get to user space.
-  
-  // set S Previous Privilege mode to User.
-  unsigned long x = r_sstatus();
-  x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
-  x |= SSTATUS_SPIE; // enable interrupts in user mode
-  w_sstatus(x);
-
-  // set S Exception Program Counter to the saved user pc.
-  w_sepc(p->trapframe->epc);
-
-  // tell trampoline.S the user page table to switch to.
-  uint64 satp = MAKE_SATP(p->pagetable);
-
-  // jump to trampoline.S at the top of memory, which 
-  // switches to the user page table, restores user registers,
-  // and switches to user mode with sret.
-  uint64 fn = TRAMPOLINE + (userret - trampoline);
-  ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
-}
-```
-
-### Debug uservec in trampoline.S (see chapter4 )
-
-```c
-// In trampoline.S - simplified view
-// 1. CPU switches to kernel page table
-// 2. Switches to kernel stack
-csrw sscratch, a0        // Save user a0
-ld sp, 8(a0)            // Load kernel stack pointer
-// Now using kernel stack for execution
-```
-
-
-### Debug usertrap in trap.c
-
-```c
-//
-// handle an interrupt, exception, or system call from user space.
-// called from trampoline.S
-//
-void
-usertrap(void)
-{
-  int which_dev = 0;
-
-  if((r_sstatus() & SSTATUS_SPP) != 0)
-    panic("usertrap: not from user mode");
-
-  // send interrupts and exceptions to kerneltrap(),
-  // since we're now in the kernel.
-  w_stvec((uint64)kernelvec);
-
-  struct proc *p = myproc();
-  
-  // save user program counter.
-  p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
-    // system call
-
-    if(p->killed)
-      exit(-1);
-
-    // sepc points to the ecall instruction,
-    // but we want to return to the next instruction.
-    p->trapframe->epc += 4;
-
-    // an interrupt will change sstatus &c registers,
-    // so don't enable until done with those registers.
-    intr_on();
-
-    syscall();
-  } else if((which_dev = devintr()) != 0){
-    // ok
-  } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
-  }
-
-  if(p->killed)
-    exit(-1);
-
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
-
-  usertrapret();
-}
-
-```
-
-### Debug syscall->exec -> usertrapret
-
-#### syscall (see chapter 2)
-
-#### exec (see 3.8 Code:exec)
-
-#### usertrapret（see above）
-
-
-
-
-```c
-// in exec()
-(gdb) p/s path
-$9 = 0x3fffffdf08 "/init"
-
-```
 
 
 # 3.8 Code: exec
@@ -1592,8 +987,8 @@ It initializes the user part of an address space from a file stored in the file 
 - Then, it reads the `ELF header`(first few bytes of the file) 
   Xv6 applications are described in the widely-used ELF format, defined in (kernel/elf.h).  
   An ELF binary consists of 
-  - a. an ELF header `struct elfhdr` (kernel/elf.h:6)
-  - b. followed by a sequence of program section headers `struct proghdr` (kernel/elf.h:25). 
+  - an ELF header `struct elfhdr` (kernel/elf.h:6)
+  - followed by a sequence of program section headers `struct proghdr` (kernel/elf.h:25). 
     Each proghdr describes a section of the application that must be loaded into memory; 
     xv6 programs have only one program section header, but other systems might have separate sections for instructions and data.
   
@@ -1652,6 +1047,7 @@ proc_pagetable(struct proc *p)
 (gdb) next
 ....
 
+// the first user program is init
 (gdb) p/s path
 $3 = 0x3fffffdf08 "/init"
 (gdb) p/s argv[0]
@@ -2437,6 +1833,17 @@ Here the VMA = 0x00000000, which means .text is linked to start at address 0.
 
 ## 4. Setup the user stack
 
+- Actual user stack.
+Now exec allocates and initializes the user stack. It allocates just `one stack page`. 
+Exec copies the argument strings to the top of the stack one at a time, recording the pointers to them in `ustack`.
+It places a null pointer at the end of what will be the argv list passed to main. 
+The first three entries in ustack are the fake return program counter, argc, and argv pointer.
+
+- Guard page (inaccessible).
+Exec places an inaccessible page just below the stack page, so that programs that try to use more than one page will fault. 
+This inaccessible page also allows exec to deal with arguments that are too large; 
+in that situation, the `copyout` (kernel/vm.c:347) function that exec uses to copy arguments to the stack will notice that the destination page is not accessible, and will return -1.
+
 ```c
 // Allocate two pages at the next page boundary.
 // Use the second as the user stack.
@@ -2450,26 +1857,18 @@ sz = sz1;
 uvmclear(pagetable, sz-2*PGSIZE);
 sp = sz;
 stackbase = sp - PGSIZE;
-```
 
-- Actual user stack.
-Now exec allocates and initializes the user stack. It allocates just `one stack page`. 
-Exec copies the argument strings to the top of the stack one at a time, recording the pointers to them in `ustack`.
-It places a null pointer at the end of what will be the argv list passed to main. 
-The first three entries in ustack are the fake return program counter, argc, and argv pointer.
 
-- Guard page (inaccessible).
-Exec places an inaccessible page just below the stack page, so that programs that try to use more than one page will fault. 
-This inaccessible page also allows exec to deal with arguments that are too large; 
-in that situation, the `copyout` (kernel/vm.c:347) function that exec uses to copy arguments to the stack will notice that the destination page is not accessible, and will return -1.
-
-```c
 (gdb) p sz
 $28 = 4056
 (gdb) p sz1
 $29 = 12288
 (gdb) p sz+2*4096
 $30 = 12288
+(gdb) p stackbase
+$24 = 8192
+
+
 // sz = sz1;
 // uvmclear(pagetable, sz-2*PGSIZE);
 (gdb) p sz
@@ -2516,13 +1915,19 @@ Exec must wait to free the old image until it is sure that the system call will 
 if the old image is gone, the system call cannot return -1 to it. The only error cases in exec happen during the creation of the image. 
 Once the image is complete, exec can commit to the new page table (kernel/exec.c:113) and free the old one (kernel/exec.c:117).
 
-## 5. Copy arguments onto the stack
+### Copy arguments onto the stack
 
 At this point in exec(), the process’s new memory (code, data, bss) is already set up.
 this is the final stage of exec(): setting up the user stack with the arguments (argv[]) before jumping into the new program
-Now xv6 needs to make the stack look like what main(int argc, char *argv[]) expects.
-- argv (kernel side) → the arguments passed to exec(path, argv) (strings in kernel memory).
-- ustack[] (kernel array of uint64) → temporary storage for the future argv[] pointers inside user space.
+
+Now xv6 needs to make the stack look like what `main(int argc, char *argv[])` expects.
+- `argv` (kernel side) → the arguments passed to exec(path, argv) (strings in kernel memory).
+- `ustack[]` (kernel array of uint64) → temporary storage for the future argv[] pointers inside user space.
+
+
+Pushes each string argument (argv[i]) into the user stack memory.
+Records their addresses in ustack[].
+Then pushes the whole argv[] array itself onto the stack:
 
 ```C
 // Push argument strings, prepare rest of stack in ustack.
@@ -2551,14 +1956,29 @@ Now xv6 needs to make the stack look like what main(int argc, char *argv[]) expe
   // argc is returned via the system call return
   // value, which goes in a0.
   p->trapframe->a1 = sp;
-```
 
-Pushes each string argument (argv[i]) into the user stack memory.
-Records their addresses in ustack[].
-Then pushes the whole argv[] array itself onto the stack:
 
-### Debuging argc
-```c
+
+(gdb) p argv[0]
+$27 = 0x87f53000 "echo"
+(gdb) p argv[1]
+$28 = 0x87f52000 "hi"
+(gdb) p argv[2]
+$29 = 0x0 <runcmd>
+
+// argv is a user-space pointer, not directly readable from kernel GDB, since GDB is debugging the kernel (and kernel can’t just deref user memory).
+(gdb) p argv
+$4 = (char **) 0x3fffffde08
+
+// Use x/s on the user-space addresses after copyout has run:
+// (gdb) x/4s 0x3fffffde08
+// This will try to read 4 strings starting at that user-space pointer.
+
+// if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)  
+// Each argv[i] string is copied into user memory using copyout.
+
+
+
 // sp = current top of user stack (starts high, grows downward).
 (gdb) p/d sp
 $2 = 12288
@@ -2576,19 +1996,7 @@ $6 = 12282
 (gdb) p sp
 $10 = 12272
 
-(gdb) p argc
-$3 = 0
-// argv is a user-space pointer, not directly readable from kernel GDB, since GDB is debugging the kernel (and kernel can’t just deref user memory).
-(gdb) p argv
-$4 = (char **) 0x3fffffde08
 
-// Use x/s on the user-space addresses after copyout has run:
-// (gdb) x/4s 0x3fffffde08
-// This will try to read 4 strings starting at that user-space pointer.
-
-
-// if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)  
-// Each argv[i] string is copied into user memory using copyout.
 
 
 ```
@@ -2652,7 +2060,12 @@ $32 = 32
 ```
 
 
-## 6. Map trapframe (initial CPU state)
+
+
+
+## 5. Commit new address space
+
+### Map trapframe (initial CPU state)
 
 ```c
 p->trapframe->a1 = sp;      // argv pointer
@@ -2683,9 +2096,6 @@ When process resumes in user mode:
 This matches the C calling convention: main(int argc, char *argv[]).
 
 
-## 7. Commit new address space
-
-
 * Save the newly created `pagetable` in the process structure (`p->pagetable`).
 * Save the size of memory (`p->sz`), stack pointer, and program counter (`p->trapframe->epc = elf_entry`).
 * Now the process has its own virtual address space.
@@ -2696,6 +2106,7 @@ oldpagetable = p->pagetable;
 p->pagetable = pagetable; // switch process to new page table
 p->sz = sz;
 proc_freepagetable(oldpagetable, oldsz);
+return argc; // returns to syscall layer
 ```
 Swaps in the new page table as the process’s address space.
 Frees the old one (from the program that just got replaced).
@@ -2714,220 +2125,35 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 }
 ```
 
+## 6. Back to the syscall path After exec() returns
 
-## 8. Return to userspace
+exec ->  sys_exec() → syscall() -> → usertrapret() → userret → user space
 
-The process continues execution in user mode, at `elf.entry` (typically `_start` in crt0.S), with a fresh address space and stack.
-
-* When scheduled, the CPU switches to this new process’s page table.
-* The process begins executing at the ELF entry point (usually `_start`).
-
-
-
-
-
-# Debug a user process: echo
-
-### Boot xv6 and debug runcmd
+### sys_exec
 ```c
-// after xv6 is booted
-// xv6 kernel is booting
-// init: starting sh
-$ echo hi
-
-// Kernel GDB session only knows kernel structs.
-// To inspect cmd (a user-space struct cmd from sh.c), you must load the user/_sh ELF symbols with add-symbol-file.
-
-(gdb) add-symbol-file user/_sh 0x0
-add symbol table from file "user/_sh" at
-        .text_addr = 0x0
-Reading symbols from user/_sh...
-
-// Meaning: “Load the debug symbols for user/_sh, and tell GDB that the code starts at virtual address 0x0.”
-// user/_sh is the ELF for the shell program (compiled with symbols).
-// 0x0 is its load base (xv6 loads user programs at VA 0 by kernel)
-// After this, GDB will know how to map struct cmd, main(), etc. to the addresses you see in your cmd pointer.
-
-(gdb) b runcmd
-(gdb) c
-
-
-//  the memory map is user space
-(qemu) info mem
-vaddr            paddr            size             attr
----------------- ---------------- ---------------- -------
-0000000000000000 0000000087f70000 0000000000001000 rwxu-a-
-0000000000001000 0000000087f66000 0000000000001000 rwxu-ad
-0000000000002000 0000000087f71000 0000000000001000 rwx----
-0000000000003000 0000000087f5a000 0000000000001000 rwxu-ad
-0000000000004000 0000000087f59000 0000000000001000 rwxu-ad
-0000000000005000 0000000087f58000 0000000000001000 rwxu---
-0000000000006000 0000000087f57000 0000000000001000 rwxu---
-0000000000007000 0000000087f56000 0000000000001000 rwxu---
-0000000000008000 0000000087f55000 0000000000001000 rwxu---
-0000000000009000 0000000087f54000 0000000000001000 rwxu---
-000000000000a000 0000000087f53000 0000000000001000 rwxu---
-000000000000b000 0000000087f52000 0000000000001000 rwxu---
-000000000000c000 0000000087f51000 0000000000001000 rwxu---
-000000000000d000 0000000087f50000 0000000000001000 rwxu---
-000000000000e000 0000000087f4f000 0000000000001000 rwxu---
-000000000000f000 0000000087f4e000 0000000000001000 rwxu---
-0000000000010000 0000000087f4d000 0000000000001000 rwxu---
-0000000000011000 0000000087f4c000 0000000000001000 rwxu---
-0000000000012000 0000000087f4b000 0000000000001000 rwxu---
-0000000000013000 0000000087f4a000 0000000000001000 rwxu-ad
-0000003fffffe000 0000000087f64000 0000000000001000 rw---ad
-0000003ffffff000 000000008000a000 0000000000001000 r-x--a-
-
-// cmd is a pointer to a struct cmd
-(gdb) p cmd
-$2 = (struct cmd *) 0x13f50
-(gdb) info reg sp
-sp             0x3f70   0x3f70
-
-(gdb) p *cmd
-$12 = {
-  type = 1
+// exec() returns inside the kernel, to the syscall handler in sys_exec():
+uint64
+sys_exec(void)
+{
+  char path[MAXPATH];
+  char *argv[MAXARG];
+  ...
+  return exec(path, argv);
 }
-
-// case EXEC:
-//   ecmd = (struct execcmd*)cmd;
-//   if(ecmd->argv[0] == 0)
-//     exit(1);
-
-
-(gdb) p *((struct execcmd *)cmd)
-$18 = {
-  type = 1,
-  argv =     {0x1ec8 <buf> "echo",
-    0x1ecd <buf+5> "hi",
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>},
-  eargv =     {0x1ecc <buf+4> "",
-    0x1ecf <buf+7> "",
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>,
-    0x0 <runcmd>}
-}
-
-
-
-//   exec(ecmd->argv[0], ecmd->argv);
-//   fprintf(2, "exec %s failed\n", ecmd->argv[0]);
-//   break;
-
-(gdb) p ecmd->argv
-$24 =   {0x1ec8 <buf> "echo",
-  0x1ecd <buf+5> "hi",
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>}
-
-(gdb) p ecmd->eargv
-$25 =   {0x1ecc <buf+4> "",
-  0x1ecf <buf+7> "",
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>,
-  0x0 <runcmd>}
-
+```
+### syscall()
+```c
+// That then returns to the system call dispatcher in syscall():
+syscall():
+    ...
+    p->trapframe->a0 = syscalls[num](); // return value in a0
+    
+// So syscall() finishes, and control goes back to usertrapret() — which prepares to return to user mode.
 ```
 
-### Debug echo in exec
-```c
-(gdb) b exec
-
-// after trap and load satp register to kenerl mememory space
-(qemu) info mem
-vaddr            paddr            size             attr
----------------- ---------------- ---------------- -------
-0000000002000000 0000000002000000 0000000000010000 rw-----
-000000000c000000 000000000c000000 0000000000001000 rw---ad
-000000000c001000 000000000c001000 0000000000001000 rw-----
-000000000c002000 000000000c002000 0000000000001000 rw---ad
-000000000c003000 000000000c003000 00000000001fe000 rw-----
-000000000c201000 000000000c201000 0000000000001000 rw---ad
-000000000c202000 000000000c202000 00000000001fe000 rw-----
-0000000010000000 0000000010000000 0000000000002000 rw---ad
-0000000080000000 0000000080000000 000000000000a000 r-x--a-
-000000008000a000 000000008000a000 0000000000001000 r-x----
-000000008000b000 000000008000b000 0000000000002000 rw---ad
-000000008000d000 000000008000d000 0000000000007000 rw-----
-0000000080014000 0000000080014000 0000000000011000 rw---ad
-0000000080025000 0000000080025000 0000000000001000 rw-----
-0000000080026000 0000000080026000 0000000000003000 rw---ad
-0000000080029000 0000000080029000 0000000007f17000 rw-----
-0000000087f40000 0000000087f40000 0000000000078000 rw---ad
-0000000087fb8000 0000000087fb8000 0000000000001000 rw---a-
-0000000087fb9000 0000000087fb9000 0000000000046000 rw-----
-0000000087fff000 0000000087fff000 0000000000001000 rw---a-
-0000003ffff7f000 0000000087f77000 000000000003d000 rw-----
-0000003fffff9000 0000000087fb4000 0000000000003000 rw---ad
-0000003ffffff000 000000008000a000 0000000000001000 r-x--a-
-
-
-(gdb) p path
-$14 = 0x3fffff9f08 "echo"
-
-(gdb) p argv
-$16 = (char **) 0x3fffff9e08
-
-(gdb) p/s argv[0]
-$17 = 0x87f49000 "echo"
-
-(gdb) p/s argv[1]
-$18 = 0x87f48000 "hi"
-
-// struct proc *p = myproc(); // initializes a local pointer p to the current process.
-(gdb) p p->pid
-$19 = 3
-
-
-// in  proc_pagetable(struct proc *p)
-(gdb) info reg sp
-sp             0x3fffff9ba0     0x3fffff9ba0
-(gdb) info frame
-// Stack level 0, frame at 0x3fffff9bd0:
-//  pc = 0x80002c54 in proc_pagetable (kernel/proc.c:202); saved pc = 0x800074b8
-//  called by frame at 0x3fffff9df0
-//  source language c.
-//  Arglist at 0x3fffff9bd0, args: p=0x80015048 <proc+752>
-//  Locals at 0x3fffff9bd0, Previous frame's sp is 0x3fffff9bd0
-//  Saved registers:
-//   ra at 0x3fffff9bc8, fp at 0x3fffff9bc0, pc at 0x3fffff9bc8Could not fetch register "ustatus"; remote failure reply 'E14'
 
 
 
-(gdb) info stack
-#0  0x0000000080002c54 in proc_pagetable (p=0x80015048 <proc+752>) at kernel/proc.c:202
-#1  0x00000000800074b8 in exec (path=0x3fffff9f08 "echo", argv=0x3fffff9e08) at kernel/exec.c:41
-#2  0x0000000080008838 in sys_exec () at kernel/sysfile.c:447
-#3  0x0000000080004402 in syscall () at kernel/syscall.c:175
-#4  0x0000000080003d26 in usertrap () at kernel/trap.c:67
-#5  0x000000000000008c in runcmd (cmd=<error reading variable: Cannot access memory at address 0x3f78>) at user/sh.c:78
-Backtrace stopped: previous frame inner to this frame (corrupt stack?)
-
-```
 # ELF file
 ## What is ELF file?
 An **ELF file** (Executable and Linkable Format) is a **standard binary file format** used by Unix-like operating systems (including Linux, xv6, BSD, etc.) for executables, object code, shared libraries, and core dumps.

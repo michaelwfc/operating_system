@@ -3,7 +3,12 @@
 # (e.g., LB=util).  Run make grade to test solution with the lab's
 # grade script (e.g., grade-lab-util).
 
+# The main Makefile includes this configuration file with the line:
 -include conf/lab.mk
+
+# This approach allows the xv6 codebase to be used for different lab assignments 
+# by simply changing which lab is specified in the conf/lab.mk file. When you're working on a different lab, 
+# you would modify this file to set the LAB variable to the appropriate value (e.g., util, syscall, trap, etc.).
 
 K=kernel
 U=user

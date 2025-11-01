@@ -158,6 +158,27 @@ Thus, when the kernel needs to use a user pointer passed in a system call (e.g.,
 
 The goal of this section and the next is to allow the kernel to **directly dereference user pointers**.
 
+## Target
+Your first job is to modify the kernel so that every process uses its own copy of the kernel page table when executing in the kernel. 
+
+- Modify `struct proc` to maintain a kernel page table for each process
+- modify the `scheduler` to switch kernel page tables when switching processes. 
+For this step, each per-process kernel page table should be identical to the existing global kernel page table. 
+
+Read the book chapter and code mentioned at the start of this assignment; it will be easier to modify the virtual memory code correctly with an understanding of how it works. Bugs in page table setup can cause traps due to missing mappings, can cause loads and stores to affect unexpected pages of physical memory, and can cause execution of instructions from incorrect pages of memory.
+
+## Some hints:
+- Add a field to struct proc for the process's kernel page table.
+- A reasonable way to produce a kernel page table for a new process is to implement a modified version of kvminit that makes a new page table instead of modifying kernel_pagetable. You'll want to call this function from allocproc.
+- Make sure that each process's kernel page table has a mapping for that process's kernel stack. In unmodified xv6, all the kernel stacks are set up in procinit. You will need to move some or all of this functionality to allocproc.
+- Modify scheduler() to load the process's kernel page table into the core's satp register (see kvminithart for inspiration). Don't forget to call sfence_vma() after calling w_satp().
+- scheduler() should use kernel_pagetable when no process is running.
+- Free a process's kernel page table in freeproc.
+- You'll need a way to free a page table without also freeing the leaf physical memory pages.
+- vmprint may come in handy to debug page tables.
+- It's OK to modify xv6 functions or add new functions; you'll probably need to do this in at least kernel/vm.c and kernel/proc.c. (But, don't modify kernel/vmcopyin.c, kernel/stats.c, user/usertests.c, and user/stats.c.)
+- A missing page table mapping will likely cause the kernel to encounter a page fault. It will print an error that includes sepc=0x00000000XXXXXXXX. You can find out where the fault occurred by searching for XXXXXXXX in kernel/kernel.asm.
+
 ### What “directly dereference user pointers” means?
 
 After the modification (per-process kernel page tables)
@@ -186,50 +207,189 @@ This is why in modern OS design, Linux and others are very careful about user �
 
 
 
-## Target
-Your first job is to modify the kernel so that every process uses its own copy of the kernel page table when executing in the kernel. 
-
-- Modify `struct proc` to maintain a kernel page table for each process
-- modify the `scheduler` to switch kernel page tables when switching processes. 
-For this step, each per-process kernel page table should be identical to the existing global kernel page table. 
-
-
-## Some hints:
-
-- Add a field to `struct proc` for the process's kernel page table.
-- A reasonable way to produce a kernel page table for a new process is to implement a modified version of `kvminit` that makes a new page table instead of modifying `kernel_pagetable`. You'll want to call this function from `allocproc` .
-- Make sure that each process's kernel page table has a mapping for that process's kernel stack. In unmodified xv6, all the kernel stacks are set up in `procinit`. You will need to move some or all of this functionality to `allocproc` .
-- Modify `scheduler()` to load the process's kernel page table into the core's `satp register` (see `kvminithart` for inspiration). Don't forget to call `sfence_vma()` after calling `w_satp()`.
-  `scheduler()` should use kernel_pagetable when no process is running.
-- Free a process's kernel page table in `freeproc`.
-  You'll need a way to free a page table without also freeing the leaf physical memory pages.
-- vmprint may come in handy to debug page tables.
-- It's OK to modify xv6 functions or add new functions; you'll probably need to do this in at least kernel/vm.c and kernel/proc.c. (But, don't modify kernel/vmcopyin.c, kernel/stats.c, user/usertests.c, and user/stats.c.)
-- A missing page table mapping will likely cause the kernel to encounter a page fault. It will print an error that includes sepc=0x00000000XXXXXXXX. You can find out where the fault occurred by searching for XXXXXXXX in kernel/kernel.asm.
 
 ## Solution
 
-1. Build a new kernel page table as `kvminit()` does
-   
-  b. Add a new field to `struct proc` to store the kernel page table
+### 1. Adding a kernel_pagetable field to `struct proc`
+- Add a field to `struct proc` for the process's kernel page table.
+- A reasonable way to produce a kernel page table for a new process is to implement a modified version of `kvminit` that makes a new page table instead of modifying `kernel_pagetable`. You'll want to call this function from `allocproc` .
 
 
-2. Creates kernel page table and maps kernel stack for each new process 
-   `allocproc`
 
-In stock xv6, `procinit()` maps all kernel stacks into the global kernel pagetable. 
+### 2. Creates kernel page table and maps kernel stack for each new process
 
-Now we’ll move that mapping into each process’s kpagetable at `allocproc()` time.
+- Make sure that each process's kernel page table has a mapping for that process's kernel stack. 
+  In unmodified xv6, all the kernel stacks are set up in `procinit`
+  You will need to move some or all of this functionality to `allocproc`.
 
-   
-1.  Make the scheduler switch kernel page tables
+In vanilla xv6:
+- There’s one single global kernel page table for all processes.
+- That page table has mappings for every process’s kernel stack.
+So any process can run in kernel mode, and its kernel stack VA → PA translation is valid.
+
+1. kernel stacks are stetup in `procinit`
+   ```c
+   uint64 va = KSTACK((int) (p - proc));
+   kvmmap(kernel_pagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+   ```
+2. set as stack pointer in `usertrapret`
+   ```c
+   p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
+   ```
+3. The CPU switches to process A’s kernel stack in `uservec`:
+   ```asm
+   csrw sscratch, a0        # Save user a0
+   ld sp, 8(a0)             # Load kernel stack pointer
+   ```
+
+Now we’ll move kernel stack mapping into each process’s kpagetable at `allocproc()` (where you allocate the process structure)
+
+
+### 3. Make the scheduler switch kernel page tables
+
+- Modify `scheduler()`  in kernel/proc.c to load the process's kernel page table into the core's `satp register` 
+  (see `kvminithart` for inspiration). 
+  Don't forget to call `sfence_vma()` after calling `w_satp()`.
+  `scheduler()` should use kernel_pagetable when no process is running.
+
 Two things must happen when the CPU switches which process is “current”:
-a. Between processes (in the scheduler, while in the kernel): we must load the chosen process’s kpagetable into `satp` and flush the `TLB`.
-b. On traps from user to kernel (uservec in trampoline.S): the trampoline switches to the kernel pagetable by loading the global variable kernel_pagetable. Therefore, we must keep that global variable pointing at the current process’s kpagetable before we let the process run.
+- 1. Between processes (in the `scheduler`, while in the kernel): we must load the chosen process’s kpagetable into `satp` and flush the `TLB`.
+- 2. On traps from user to kernel (`uservec` in trampoline.S): the trampoline switches to the kernel pagetable by loading the global variable kernel_pagetable. Therefore, we must keep that global variable pointing at the current process’s kpagetable before we let the process run.
 
 
-6) Move/trim the old procinit() kernel-stack mapping
-7) Sanity checks / gotchas
+#### Reasoning
+
+In original xv6, there is only one global kernel page table (kernel_pagetable).
+So, all processes share that one `satp` value whenever the CPU is executing in kernel mode.
+
+```asm
+ld t1, 0(a0)       # load p->trapframe->kernel_satp
+csrw satp, t1
+sfence.vma zero, zero
+```
+
+When switching between processes: 
+The scheduler() doesn’t touch satp at all — because the kernel is always running under the same global kernel page table.
+
+What changes in the assignment:
+In this assignment, you’re asked to make each process have its own kernel page table.
+That means:
+- Each process p now has p->kpagetable
+- When p is running in the kernel (e.g. during a syscall or trap), the CPU must use that process’s own kernel page table
+- And this p->kpagetable is different for each process (it may map different kernel stacks, or even later, user memory).
+
+Otherwise, you’d still be using the previous process’s kernel mappings while trying to run a different process — and that’s unsafe.
+
+And when the CPU goes idle (no process running), it should revert to:
+```c
+if(!found){
+      // CPU idle path — no process is runnable
+      // Use global kernel page table
+      w_satp(MAKE_SATP(kernel_pagetable));
+      sfence_vma();
+    }
+```
+✅ When CPU is idle (no process running): use global kernel page table
+✅ When switching to a process: load that process’s kernel page table
+
+so that the kernel itself can still run.
+
+So both are needed:
+- uservec(in trampoline.S) ensures the same process switches to its kernel page table during trap.
+- scheduler ensures that different processes use their own kernel page tables.
+
+
+### 4. Free a process's kernel page table
+
+- Free a process's kernel page table in `freeproc`.
+  You'll need a way to free a page table without also freeing the leaf physical memory pages.
+
+
+Every process now owns an extra page of memory (or several pages) that hold its kernel page table structure (the page table pages themselves).
+
+When a process exits (e.g., exit() → freeproc()), if we don’t free these pages:
+- The kernel’s memory allocator (kalloc()) will never reclaim them.
+- Over time, as many processes are created and destroyed, the kernel will run out of free memory — a memory leak.
+
+So, we must free each process’s kernel page table when the process is destroyed.
+
+
+A RISC-V Sv39 page table is a 3-level tree:
+```
+root page table (level 2)
+  ├─ entries pointing to next-level page tables (level 1)
+  │    ├─ entries pointing to final-level (level 0)
+  │    │    ├─ entries pointing to *leaf physical memory pages*
+```
+Leaf physical pages are the actual memory pages that store data/code, e.g.:
+- user program memory
+- kernel text/data
+- kernel stacks
+- device memory
+
+Each leaf entry (PTE) has the PTE_V bit set and points directly to physical memory.
+```c
+pte_t pte = walk(pagetable, va, 0);
+if(pte & PTE_V && (pte & (PTE_R | PTE_W | PTE_X)))
+  // This is a leaf mapping
+
+```
+
+
+So, when we free the page table, we only want to free the page table pages themselves, not the leaf physical pages they point to — because:
+- kernel memory pages (like text, data, trampoline) are shared by all processes,
+- and user memory pages are freed separately in freeproc() via uvmfree().
+
+How to free a process’s kernel page table safely
+xv6 already provides a helper:
+```c
+void freewalk(pagetable_t pagetable);
+```
+Defined in kernel/vm.c.
+It recursively frees all page table pages (except leaf mappings).
+
+However — the vanilla freewalk() also frees the leaf pages for user page tables, because it’s designed to clean up after uvmfree().
+
+For kernel page tables, that’s too aggressive — those leaf pages (like the kernel text, trampoline, etc.) are shared, not owned by the process.
+
+So, you must write a modified version, e.g.:
+
+```c
+void
+freewalk_noleaf(pagetable_t pagetable)
+{
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      uint64 child = PTE2PA(pte);
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        // this PTE points to a lower-level page table
+        freewalk_noleaf((pagetable_t)child);
+      }
+      // else, it's a leaf PTE — skip freeing its physical memory
+      pagetable[i] = 0;
+    }
+  }
+  kfree((void*)pagetable);
+}
+
+// Then in freeproc():
+if(p->kpagetable){
+  freewalk_noleaf(p->kpagetable);
+  p->kpagetable = 0;
+}
+
+
+```
+
+
+
+### others
+- `vmprint` may come in handy to debug page tables.
+- It's OK to modify xv6 functions or add new functions; you'll probably need to do this in at least kernel/vm.c and kernel/proc.c. (But, don't modify kernel/vmcopyin.c, kernel/stats.c, user/usertests.c, and user/stats.c.)
+- A missing page table mapping will likely cause the kernel to encounter a page fault. It will print an error that includes sepc=0x00000000XXXXXXXX. You can find out where the fault occurred by searching for XXXXXXXX in kernel/kernel.asm.
+
+
 
 
 
@@ -241,7 +401,143 @@ b. On traps from user to kernel (uservec in trampoline.S): the trampoline switch
 You pass this part of the lab if `usertests` runs correctly.
 Read the book chapter and code mentioned at the start of this assignment; it will be easier to modify the virtual memory code correctly with an understanding of how it works. Bugs in page table setup can cause traps due to missing mappings, can cause loads and stores to affect unexpected pages of physical memory, and can cause execution of instructions from incorrect pages of memory.
 
+If usertests passes, you can be confident that:
 
+- Your per-process kernel page tables are correctly created
+- The scheduler correctly switches between page tables
+- System calls continue to work as expected
+- Memory management operations function properly
+- All existing kernel functionality is preserved
+
+```bash
+# In the xv6_labs_2021 directory
+make qemu
+
+# Then in the QEMU terminal
+$ usertests
+# This will run all tests in the usertests suite. If your implementation is correct, all tests should pass. The usertests suite is designed to thoroughly test the system call interface and various kernel functionalities that would be affected by page table changes.
+
+
+# Running specific tests (optional)
+# In QEMU terminal
+$ usertests forktest
+$ usertests sbrk
+$ usertests mem
+
+
+For the "A kernel page table per process" assignment, simply running usertests and seeing "ALL TESTS PASSED" is sufficient to validate that your implementation is correct. The test suite is comprehensive enough to catch any issues with your page table implementation because it exercises all the kernel functionality that would be affected by this change.
+
+
+
+```
+
+
+## Debug: echo hi
+<!-- write(fd, buf, n) -->
+
+User program passes buf = 0x4000 (user VA).
+
+Kernel runs sys_write().
+
+Kernel can’t just do *buf because its page table doesn’t map 0x4000.
+
+Instead, it calls `copyin(p->pagetable, kbuf, buf, n)` which:
+- Uses `walk(p->pagetable, buf)` to find the physical address.
+- Copies data into a kernel buffer (kbuf).
+
+Then the kernel writes kbuf to the device.
+
+
+
+
+
+### Debug write
+```bash
+# - a0 → first argument ,pointer to buffer → use x/s $a0 to see string
+# - a1 → second argument,a1 = integer value (100) → use p $a1 to see value
+(gdb) info reg a0 a1 a2 a7
+a0             0x1520   5408
+a1             0x64     100
+a2             0x1      1
+a7             0x3      3
+
+# # Print a0 in hex
+(gdb) p/x $a0
+$7 = 0x1520   # Should match buf address
+(gdb) p/x buf
+$14 = 0x1520
+(gdb) p/x &buf[0]
+$15 = 0x1520
+
+# Print a0 in decimal
+(gdb) p $a0
+$8 = 5408
+
+# Show string at address in a0
+(gdb) x/s $a0
+0x1520 <buf.1141>:      "echo hi\n"
+
+# # Second argument: nbuf (should be 100)
+# a1 = integer value (100) → use p $a1 to see value
+(gdb) p/x $a1
+$10 = 0x64
+
+(gdb) p $a1
+$11 = 100
+
+# Treats a1 as ADDRESS, reads memory at 0x64
+(gdb) x/d $a1
+0x64 <panic+16>:        -91  # Reading random memory at address 0x64!
+
+
+ 
+# Signature of write: int write(int fd, const void *buf, int n);
+# user/user.h:        int write(int, const void*, int);
+
+# At this point, the arguments to write() are already in the standard RISC-V calling convention registers:
+# - a0 → first argument
+# - a1 → second argument,a1 is the pointer to the buffer in user space.
+# - a2 → third argument
+# - a7 → system call number (already loaded with SYS_write = 16)
+
+```
+
+
+# 3. Simplify copyin/copyinstr (hard)
+
+## Target
+The kernel's copyin function reads memory pointed to by user pointers. It does this by translating them to physical addresses, which the kernel can directly dereference. It performs this translation by walking the process page-table in software. 
+
+Your job in this part of the lab is to add user mappings to each process's kernel page table (created in the previous section) that allow `copyin` (and the related string function copyinstr) to directly dereference user pointers.
+
+Replace the body of `copyin` in kernel/vm.c with a call to `copyin_new` (defined in kernel/vmcopyin.c); do the same for `copyinstr` and `copyinstr_new`. Add mappings for user addresses to each process's kernel page table so that copyin_new and copyinstr_new work. 
+
+
+
+This scheme relies on the user virtual address range not overlapping the range of virtual addresses that the kernel uses for its own instructions and data. 
+
+Xv6 uses virtual addresses that start at zero for user address spaces, and luckily the kernel's memory starts at higher addresses. However, this scheme does limit the maximum size of a user process to be less than the kernel's lowest virtual address. After the kernel has booted, that address is `0xC000000` in xv6, the address of the `PLIC` registers; 
+see `kvminit()` in kernel/vm.c, kernel/memlayout.h, and Figure 3-4 in the text. You'll need to modify xv6 to prevent user processes from growing larger than the PLIC address.
+
+## Some hints:
+
+- Replace `copyin()` with a call to `copyin_new` first, and make it work, before moving on to `copyinstr`.
+- At each point where the kernel changes a process's user mappings, change the process's kernel page table in the same way. Such points include fork(), exec(), and sbrk().
+- Don't forget that to include the first process's user page table in its kernel page table in userinit.
+- What permissions do the PTEs for user addresses need in a process's kernel page table? (A page with PTE_U set cannot be accessed in kernel mode.)
+- Don't forget about the above-mentioned PLIC limit.
+
+
+Linux uses a technique similar to what you have implemented. Until a few years ago many kernels used the same per-process page table in both user and kernel space, with mappings for both user and kernel addresses, to avoid having to switch page tables when switching between user and kernel space. However, that setup allowed side-channel attacks such as Meltdown and Spectre.
+
+Explain why the third test srcva + len < srcva is necessary in copyin_new(): give values for srcva and len for which the first two test fail (i.e., they will not cause to return -1) but for which the third one is true (resulting in returning -1).
+
+## Test
+
+You pass this assignment if `usertests` runs correctly and all the make grade tests pass.
+
+
+-------------------
 
 # Background
 
@@ -350,172 +646,3 @@ This is called the **vsyscall** or **vDSO** mechanism in Linux.
 
 
 
-# Example: write(fd, buf, n)
-
-User program passes buf = 0x4000 (user VA).
-
-Kernel runs sys_write().
-
-Kernel can’t just do *buf because its page table doesn’t map 0x4000.
-
-Instead, it calls `copyin(p->pagetable, kbuf, buf, n)` which:
-- Uses `walk(p->pagetable, buf)` to find the physical address.
-- Copies data into a kernel buffer (kbuf).
-
-Then the kernel writes kbuf to the device.
-
-
-
-
-
-## .gdbinit_my setting
-```bash
-set confirm off
-set architecture riscv:rv64
-symbol-file kernel/kernel
-set disassemble-next-line auto
-set riscv use-compressed-breakpoints yes
-set disassemble-next-line on
-set print pretty on 
-set print array on
-add-symbol-file user/_sh
-b sys_write
-c
-
-# But this will trigger for every write call (including shell prompt).
-# b write 
-```
-
-## Debug
-
-```bash
-# in qemu terminal
-make clean && make qemu-gdb
-*** Now run 'gdb' in another window.
-qemu-system-riscv64 -machine virt -bios none -kernel kernel/kernel -m 128M -smp 1 -nographic -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 -S -gdb tcp::26000
-
-
-# in gdb terminal
-# Kernel GDB (for system calls and kernel code)
-# gdb-multiarch  kernel/kernel
-
-gdb-multiarch user/_sh          # Debug the shell binary, not kernel
-
-(gdb) add-symbol-file user/_sh
-(gdb) b getcmd                  # Break at shell's getcmd function
-(gdb) info b
-(gdb) c
-Continuing.
-
-Breakpoint 1, write () at user/usys.S:41
-41       ecall
-(gdb) 
-
-# after qemu ternimal 
-xv6 kernel is booting
-
-page table 0x0000000087f6e000
-..0: pte 0x0000000021fda801 pa 0x0000000087f6a000
-.. ..0: pte 0x0000000021fda401 pa 0x0000000087f69000
-.. .. ..0: pte 0x0000000021fdac1f pa 0x0000000087f6b000
-.. .. ..1: pte 0x0000000021fda00f pa 0x0000000087f68000
-.. .. ..2: pte 0x0000000021fd9c1f pa 0x0000000087f67000
-..255: pte 0x0000000021fdb401 pa 0x0000000087f6d000
-.. ..511: pte 0x0000000021fdb001 pa 0x0000000087f6c000
-.. .. ..510: pte 0x0000000021fdd807 pa 0x0000000087f76000
-.. .. ..511: pte 0x0000000020001c0b pa 0x0000000080007000
-init: starting sh
-
-
-# qemu ternimal 
-$ echo hi
-
-# in gdb
-Breakpoint 1, getcmd (buf=buf@entry=0x1520 <buf> "echo hi\n", nbuf=nbuf@entry=100) at user/sh.c:135
-135     {
-
-(gdb) p/x buf
-$1 = 0x1520
-
-(gdb) x/s buf
-0x1520 <buf.1141>:      "echo hi\n"
-
-(gdb) x/8c buf
-0x1520 <buf.1141>:      101 'e' 99 'c'  104 'h' 111 'o' 32 ' '  104 'h' 105 'i'10 '\n'
-
-(gdb) x/6i $pc
-=> 0x0 <getcmd>:        addi    sp,sp,-32
-   0x2 <getcmd+2>:      sd      ra,24(sp)
-   0x4 <getcmd+4>:      sd      s0,16(sp)
-   0x6 <getcmd+6>:      sd      s1,8(sp)
-   0x8 <getcmd+8>:      sd      s2,0(sp)
-   0xa <getcmd+10>:     addi    s0,sp,32
-
-(gdb) where
-#0  getcmd (buf=buf@entry=0x1520 <buf> "echo hi\n", nbuf=nbuf@entry=100)
-    at user/sh.c:135
-#1  0x0000000000000adc in main () at user/sh.c:159
-#2  0x00000000000000de in runcmd (cmd=<optimized out>) at user/sh.c:68
-Backtrace stopped: previous frame inner to this frame (corrupt stack?)
-
-
-(gdb) info frame
-# Stack level 0, frame at 0x3fa0:
-#  pc = 0x0 in getcmd (user/sh.c:135); saved pc = 0xadc
-#  called by frame at 0x3fe0
-#  source language c.
-#  Arglist at 0x3fa0, args: buf=buf@entry=0x1520 <buf> "echo hi\n", nbuf=nbuf@entry=100
-#  Locals at 0x3fa0, Previous frame's sp is 0x3fa0
-# Could not fetch register "ustatus"; remote failure reply 'E14'
-
-
-# - a0 → first argument ,pointer to buffer → use x/s $a0 to see string
-# - a1 → second argument,a1 = integer value (100) → use p $a1 to see value
-(gdb) info reg a0 a1 a2 a7
-a0             0x1520   5408
-a1             0x64     100
-a2             0x1      1
-a7             0x3      3
-
-# # Print a0 in hex
-(gdb) p/x $a0
-$7 = 0x1520   # Should match buf address
-(gdb) p/x buf
-$14 = 0x1520
-(gdb) p/x &buf[0]
-$15 = 0x1520
-
-# Print a0 in decimal
-(gdb) p $a0
-$8 = 5408
-
-# Show string at address in a0
-(gdb) x/s $a0
-0x1520 <buf.1141>:      "echo hi\n"
-
-# # Second argument: nbuf (should be 100)
-# a1 = integer value (100) → use p $a1 to see value
-(gdb) p/x $a1
-$10 = 0x64
-
-(gdb) p $a1
-$11 = 100
-
-# Treats a1 as ADDRESS, reads memory at 0x64
-(gdb) x/d $a1
-0x64 <panic+16>:        -91  # Reading random memory at address 0x64!
-
-
- 
-# Signature of write: int write(int fd, const void *buf, int n);
-# user/user.h:        int write(int, const void*, int);
-
-# At this point, the arguments to write() are already in the standard RISC-V calling convention registers:
-# - a0 → first argument
-# - a1 → second argument,a1 is the pointer to the buffer in user space.
-# - a2 → third argument
-# - a7 → system call number (already loaded with SYS_write = 16)
-
-
-(gdb) 
-```

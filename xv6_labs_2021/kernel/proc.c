@@ -51,6 +51,10 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
 
+      // ======= solution for pgtbl ---- part 2 ========
+      // we don't need to map the kernel stack on the global kernel page table
+      // move it to allocproc()
+
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
@@ -142,6 +146,29 @@ found:
     return 0;
   }
 
+  // ======= solution for pgtbl ---- part 2 ========
+  // create a per-process kernel page
+  // p->kpagetable = kvmmake();
+  // if(p->kpagetable == 0){
+  //   freeproc(p);
+  //   release(&p->lock);
+  //   return 0;
+  // }
+
+  // Allocate a page for the process's kernel stack.
+  // Map it high in memory, followed by an invalid
+  // guard page.
+  // char *pa = kalloc();
+  // if(pa == 0)
+  //   panic("kalloc");
+  // uint64 va = KSTACK((int) (p - proc));
+
+  // // map the kernel stack to the per-process kernel page instead of global kernel page
+  // kvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  // p->kstack = va;
+
+  // ===============================================
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -163,6 +190,15 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  
+  //==== solution for pgtbl ---- part 2 ========
+  // free the per-process kernel page
+  // if(p->kpagetable){
+  //   freewalk_noleaf(p->kpagetable);
+  // }
+  // p->kpagetable = 0;
+  // ===========================================
+
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -497,6 +533,8 @@ wait(uint64 addr)
 void
 scheduler(void)
 {
+  printf("start scheduler\n");
+
   struct proc *p;
   struct cpu *c = mycpu();
   
@@ -514,11 +552,36 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+
+        
+        // ====== solution for pgtbl ---- part 2 ========
+        // load the process's kernel page table into the core's `satp register` 
+        // That means from this point onward, any kernel virtual address (like function pointers, kernel stacks, global variables, etc.) 
+        // must be mapped in p->kpagetable — or else, dereferencing them will page fault or panic (e.g. in kvmpa()).
+        // w_satp(MAKE_SATP(p->kpagetable));
+        // sfence_vma();
+
+        //  check that the kernel page table is mapped correctly
+        // check_kvm_mapping(p->kpagetable, (uint64)&p->context);
+        // check_kvm_mapping(p->kpagetable, (uint64)&c->context);
+        // check_kvm_mapping(p->kpagetable, (uint64)swtch);
+        // ==============================================
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        
+        // ======= solution for pgtbl ---- part 2 ========
+        //  why?  
+        // After the process yields and the scheduler regains control, set w_satp(MAKE_SATP(kernel_pagetable)) for the idle scheduler if needed.
+        // CPU idle path — no process is runnable
+        // Use global kernel page table
+        // w_satp(MAKE_SATP(kernel_pagetable));
+        // sfence_vma();
+        // ===============================================
 
         found = 1;
       }

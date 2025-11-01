@@ -183,10 +183,12 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 // ======== specialized for pgtbl ---- part1 & 2 & 3 =========
 void            vmprint(pagetable_t); // xv6-labs-2020: lab3
 void            vmprint_level(pagetable_t pagetable, uint64 level);
-void            kvmmapkern(pagetable_t, uint64, uint64, uint64, int);
-pagetable_t     kvmcreate();
-void            kvmfree(pagetable_t, uint64);
-void            kvmmapuser(int, pagetable_t, pagetable_t, uint64, uint64);
+// void            kvmmapkern(pagetable_t, uint64, uint64, uint64, int);
+// pagetable_t     kvmcreate();
+// void            kvmfree(pagetable_t, uint64);
+// void            kvmmapuser(int, pagetable_t, pagetable_t, uint64, uint64);
+void            freewalk_noleaf(pagetable_t);
+void            check_kvm_mapping(pagetable_t , uint64 );
 // vmcopyin.c
 int 			copyin_new(pagetable_t, char*, uint64, uint64);
 int 			copyinstr_new(pagetable_t, char*, uint64, uint64);

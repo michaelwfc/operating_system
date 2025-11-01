@@ -60,12 +60,56 @@ kvmmake(void)
   return kpgtbl;
 }
 
-// free a kernel pagetable (only page-table pages, not mapped leaf pages)
-// void 
-// kvmfree(pagetable_t kpgtbl)
-// { 
-//   freewalk(kpgtbl); // freewalk() frees only the page-table pages
+/* ========  solution for pgtbl ---- part 2  ============ */
+// proc's version of kvminit
+// pagetable_t
+// kvmcreate() 
+// {
+//   pagetable_t pagetable;
+//   int i;
+
+//   pagetable = uvmcreate();
+//   for(i = 1; i < 512; i++) {
+//     pagetable[i] = kernel_pagetable[i];
+//   }
+//   // Mapping	Reason
+//   // UART0, PLIC, CLINT, VIRTIO0	Device memory (console, timer, disk, interrupts)
+  
+//   // uart registers
+//   kvmmap(pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+//   // virtio mmio disk interface
+//   kvmmap(pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+//   // CLINT
+//   kvmmap(pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+//   // PLIC
+//   kvmmap(pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+//   return pagetable;
 // }
+
+
+// void 
+// kvmfree(pagetable_t kpagetale, uint64 sz) 
+// {
+//   pte_t pte = kpagetale[0];
+//   pagetable_t level1 = (pagetable_t) PTE2PA(pte);
+//   for (int i = 0; i < 512; i++) {
+//     pte_t pte = level1[i];
+//     if (pte & PTE_V) {
+//       uint64 level2 = PTE2PA(pte);
+//       kfree((void *) level2);
+//       level1[i] = 0;
+//     }
+//   }
+//   kfree((void *) level1);
+//   kfree((void *) kpagetale);
+// }
+
+/* =======  end of solution for pgtbl ============ */
+
 
 
 // Switch h/w page table register to the kernel's page table,
@@ -194,6 +238,16 @@ kvmpa(uint64 va)
   pa = PTE2PA(*pte);
   return pa+off;
 }
+
+
+void
+check_kvm_mapping(pagetable_t kpgtbl, uint64 va)
+{
+  pte_t *pte = walk(kpgtbl, va, 0);
+  if(pte == 0 || (*pte & PTE_V) == 0)
+    printf("warning: unmapped kernel address %p\n", va);
+}
+
 
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
@@ -386,6 +440,26 @@ uvmfree(pagetable_t pagetable, uint64 sz)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
   freewalk(pagetable);
 }
+
+
+void
+freewalk_noleaf(pagetable_t pagetable)
+{
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      uint64 child = PTE2PA(pte);
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        // this PTE points to a lower-level page table
+        freewalk_noleaf((pagetable_t)child);
+      }
+      // else, it's a leaf PTE — skip freeing its physical memory
+      pagetable[i] = 0;
+    }
+  }
+  kfree((void*)pagetable);
+}
+
 
 // Given a parent process's page table, copy
 // its memory into a child's page table.

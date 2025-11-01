@@ -5,6 +5,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"   // Must come before proc.h
+#include "proc.h" 
+
+
+
 
 /*
  * the kernel's page table.
@@ -60,55 +65,6 @@ kvmmake(void)
   return kpgtbl;
 }
 
-/* ========  solution for pgtbl ---- part 2  ============ */
-// proc's version of kvminit
-// pagetable_t
-// kvmcreate() 
-// {
-//   pagetable_t pagetable;
-//   int i;
-
-//   pagetable = uvmcreate();
-//   for(i = 1; i < 512; i++) {
-//     pagetable[i] = kernel_pagetable[i];
-//   }
-//   // Mapping	Reason
-//   // UART0, PLIC, CLINT, VIRTIO0	Device memory (console, timer, disk, interrupts)
-  
-//   // uart registers
-//   kvmmap(pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
-
-//   // virtio mmio disk interface
-//   kvmmap(pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
-
-//   // CLINT
-//   kvmmap(pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
-
-//   // PLIC
-//   kvmmap(pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
-
-//   return pagetable;
-// }
-
-
-// void 
-// kvmfree(pagetable_t kpagetale, uint64 sz) 
-// {
-//   pte_t pte = kpagetale[0];
-//   pagetable_t level1 = (pagetable_t) PTE2PA(pte);
-//   for (int i = 0; i < 512; i++) {
-//     pte_t pte = level1[i];
-//     if (pte & PTE_V) {
-//       uint64 level2 = PTE2PA(pte);
-//       kfree((void *) level2);
-//       level1[i] = 0;
-//     }
-//   }
-//   kfree((void *) level1);
-//   kfree((void *) kpagetale);
-// }
-
-/* =======  end of solution for pgtbl ============ */
 
 
 
@@ -230,7 +186,8 @@ kvmpa(uint64 va)
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  struct proc *p = myproc();
+  pte = walk(p->kpagetable , va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -445,20 +402,26 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 void
 freewalk_noleaf(pagetable_t pagetable)
 {
+  // there are 2^9 = 512 PTEs in a page table.
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
     if(pte & PTE_V){
-      uint64 child = PTE2PA(pte);
       if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
         // this PTE points to a lower-level page table
+        uint64 child = PTE2PA(pte);
         freewalk_noleaf((pagetable_t)child);
       }
-      // else, it's a leaf PTE — skip freeing its physical memory
       pagetable[i] = 0;
+    }else if(pte & PTE_V){
+      // else, it's a leaf PTE — skip freeing its physical memory
+      panic("proc free kept: leaf");
     }
   }
   kfree((void*)pagetable);
 }
+
+
+/* =======  end of solution for pgtbl ============ */
 
 
 // Given a parent process's page table, copy

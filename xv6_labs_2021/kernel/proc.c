@@ -58,12 +58,12 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(kernel_pagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      // char *pa = kalloc();
+      // if(pa == 0)
+      //   panic("kalloc");
+      // uint64 va = KSTACK((int) (p - proc));
+      // kvmmap(kernel_pagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // p->kstack = va;
   }
   kvminithart();
 }
@@ -148,24 +148,24 @@ found:
 
   // ======= solution for pgtbl ---- part 2 ========
   // create a per-process kernel page
-  // p->kpagetable = kvmmake();
-  // if(p->kpagetable == 0){
-  //   freeproc(p);
-  //   release(&p->lock);
-  //   return 0;
-  // }
+  p->kpagetable = kvmmake();
+  if(p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
 
   // Allocate a page for the process's kernel stack.
   // Map it high in memory, followed by an invalid
   // guard page.
-  // char *pa = kalloc();
-  // if(pa == 0)
-  //   panic("kalloc");
-  // uint64 va = KSTACK((int) (p - proc));
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));
 
   // // map the kernel stack to the per-process kernel page instead of global kernel page
-  // kvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-  // p->kstack = va;
+  kvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
 
   // ===============================================
 
@@ -192,11 +192,20 @@ freeproc(struct proc *p)
   p->pagetable = 0;
   
   //==== solution for pgtbl ---- part 2 ========
+  // free kernel stack on perprocess kernel page
+  if(p->kstack){
+    pte_t* pte = walk(p->kpagetable, p->kstack,0 );
+    if(pte == 0)
+      panic("free proc: kstack not mapped");
+    kfree((void*)PTE2PA(*pte));
+  }
+  p->kstack = 0;
+
   // free the per-process kernel page
-  // if(p->kpagetable){
-  //   freewalk_noleaf(p->kpagetable);
-  // }
-  // p->kpagetable = 0;
+  if(p->kpagetable){
+    freewalk_noleaf(p->kpagetable);
+  }
+  p->kpagetable = 0;
   // ===========================================
 
   p->sz = 0;
@@ -559,8 +568,8 @@ scheduler(void)
         // load the process's kernel page table into the core's `satp register` 
         // That means from this point onward, any kernel virtual address (like function pointers, kernel stacks, global variables, etc.) 
         // must be mapped in p->kpagetable — or else, dereferencing them will page fault or panic (e.g. in kvmpa()).
-        // w_satp(MAKE_SATP(p->kpagetable));
-        // sfence_vma();
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
 
         //  check that the kernel page table is mapped correctly
         // check_kvm_mapping(p->kpagetable, (uint64)&p->context);
@@ -574,14 +583,7 @@ scheduler(void)
         // It should have changed its p->state before coming back.
         c->proc = 0;
         
-        // ======= solution for pgtbl ---- part 2 ========
-        //  why?  
-        // After the process yields and the scheduler regains control, set w_satp(MAKE_SATP(kernel_pagetable)) for the idle scheduler if needed.
-        // CPU idle path — no process is runnable
-        // Use global kernel page table
-        // w_satp(MAKE_SATP(kernel_pagetable));
-        // sfence_vma();
-        // ===============================================
+
 
         found = 1;
       }
@@ -590,6 +592,15 @@ scheduler(void)
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();
+      // ======= solution for pgtbl ---- part 2 ========
+      //  why?  
+      // After the process yields and the scheduler regains control, set w_satp(MAKE_SATP(kernel_pagetable)) for the idle scheduler if needed.
+      // CPU idle path — no process is runnable
+      // Use global kernel page table
+      w_satp(MAKE_SATP(kernel_pagetable));
+      sfence_vma();
+      // ===============================================
+
       asm volatile("wfi");
     }
 #else

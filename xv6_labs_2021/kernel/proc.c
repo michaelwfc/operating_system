@@ -297,6 +297,11 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
+  // =========== solution for pgtbl ---- part 3 ============= 
+  // oldsz = 0: no previous user memory to skip — start from scratch.
+  u2kvmcopy(p->pagetable,p->kpagetable,  0,p->sz);
+  // ========================================================
+
   p->state = RUNNABLE;
 
   release(&p->lock);
@@ -304,6 +309,12 @@ userinit(void)
 
 // Grow or shrink user memory by n bytes.
 // Return 0 on success, -1 on failure.
+/**
+growproc(n) changes the size of the current process’s user memory by n bytes:
+- if n > 0, we grow the heap (like sbrk(+n)),
+- if n < 0, we shrink it (like sbrk(-n)).
+p->sz always holds the current size of the process’s user memory (in bytes).
+*/
 int
 growproc(int n)
 {
@@ -312,18 +323,40 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    // =========== solution for pgtbl ---- part 3 =============
+    // Check if the new size would go past PLIC — that’s the upper limit of user virtual memory 
+    // (beyond which lies kernel device memory).
+    if(PGROUNDUP(sz + n) >= PLIC)
+      return -1;
+
+
+    // So after this call, sz now becomes sz + n
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    
+    // Now we mirror only the newly added range [oldsz, newsz) = [sz - n, sz).
+    // oldsz = sz - n because before growing, the process ended there.
+    // newsz = sz (the new end).
+    u2kvmcopy(p->pagetable,p->kpagetable,sz-n, sz);
+    // ========================================================
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
+
   p->sz = sz;
   return 0;
 }
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
+/**
+When a process forks, the kernel:
+1. Allocates a new process structure (np = allocproc()).
+2. Copies the parent’s user page table (uvmcopy()).
+3. Sets np->sz = p->sz — both parent and child have the same user memory size.
+*/
+
 int
 fork(void)
 {
@@ -363,6 +396,13 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
+  
+  // =========== solution for pgtbl ---- part 3 =============
+  // Because the child kernel page table has no user mappings yet, there’s nothing to skip — we must copy all mappings.
+  // Copy (mirror) all the user memory pages from address 0 up to the process size p->sz.
+  u2kvmcopy(np->pagetable,np->kpagetable, 0,  np->sz);
+  // ========================================================
+
 
   //  copy the trace mask from the parent to the child process.
   np->tracemask = p->tracemask;

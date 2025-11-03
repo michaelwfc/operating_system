@@ -183,10 +183,11 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 // ======== specialized for pgtbl ---- part1 & 2 & 3 =========
 void            vmprint(pagetable_t); // xv6-labs-2020: lab3
-void            vmprint_level(pagetable_t pagetable, uint64 level);
+void            vmprint_level(pagetable_t , uint64 );
 pte_t *         walk(pagetable_t, uint64 , int);
 void            freewalk_noleaf(pagetable_t);
 void            check_kvm_mapping(pagetable_t , uint64 );
+void            u2kvmcopy(pagetable_t, pagetable_t, uint64 , uint64 );
 // vmcopyin.c
 int 			copyin_new(pagetable_t, char*, uint64, uint64);
 int 			copyinstr_new(pagetable_t, char*, uint64, uint64);

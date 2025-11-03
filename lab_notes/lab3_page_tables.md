@@ -144,6 +144,9 @@ make qemu
 
 # test in terminal
 ./grade-lab-pgtbl pte printout
+make: 'kernel/kernel' is up to date.
+== Test pte printout == pte printout: OK (1.7s)
+    (Old xv6.out.pteprint failure log removed)
 ```
 
 
@@ -432,86 +435,14 @@ For the "A kernel page table per process" assignment, simply running usertests a
 ```
 
 
-## Debug: echo hi
-<!-- write(fd, buf, n) -->
-
-User program passes buf = 0x4000 (user VA).
-
-Kernel runs sys_write().
-
-Kernel can’t just do *buf because its page table doesn’t map 0x4000.
-
-Instead, it calls `copyin(p->pagetable, kbuf, buf, n)` which:
-- Uses `walk(p->pagetable, buf)` to find the physical address.
-- Copies data into a kernel buffer (kbuf).
-
-Then the kernel writes kbuf to the device.
-
-
-
-
-
-### Debug write
-```bash
-# - a0 → first argument ,pointer to buffer → use x/s $a0 to see string
-# - a1 → second argument,a1 = integer value (100) → use p $a1 to see value
-(gdb) info reg a0 a1 a2 a7
-a0             0x1520   5408
-a1             0x64     100
-a2             0x1      1
-a7             0x3      3
-
-# # Print a0 in hex
-(gdb) p/x $a0
-$7 = 0x1520   # Should match buf address
-(gdb) p/x buf
-$14 = 0x1520
-(gdb) p/x &buf[0]
-$15 = 0x1520
-
-# Print a0 in decimal
-(gdb) p $a0
-$8 = 5408
-
-# Show string at address in a0
-(gdb) x/s $a0
-0x1520 <buf.1141>:      "echo hi\n"
-
-# # Second argument: nbuf (should be 100)
-# a1 = integer value (100) → use p $a1 to see value
-(gdb) p/x $a1
-$10 = 0x64
-
-(gdb) p $a1
-$11 = 100
-
-# Treats a1 as ADDRESS, reads memory at 0x64
-(gdb) x/d $a1
-0x64 <panic+16>:        -91  # Reading random memory at address 0x64!
-
-
- 
-# Signature of write: int write(int fd, const void *buf, int n);
-# user/user.h:        int write(int, const void*, int);
-
-# At this point, the arguments to write() are already in the standard RISC-V calling convention registers:
-# - a0 → first argument
-# - a1 → second argument,a1 is the pointer to the buffer in user space.
-# - a2 → third argument
-# - a7 → system call number (already loaded with SYS_write = 16)
-
-```
-
-
 # 3. Simplify copyin/copyinstr (hard)
 
 ## Target
 The kernel's copyin function reads memory pointed to by user pointers. It does this by translating them to physical addresses, which the kernel can directly dereference. It performs this translation by walking the process page-table in software. 
 
-Your job in this part of the lab is to add user mappings to each process's kernel page table (created in the previous section) that allow `copyin` (and the related string function copyinstr) to directly dereference user pointers.
+Your job in this part of the lab is to add user mappings to each process's kernel page table (created in the previous section) that allow `copyin` (and the related string function copyinstr) to **directly dereference** user pointers.
 
 Replace the body of `copyin` in kernel/vm.c with a call to `copyin_new` (defined in kernel/vmcopyin.c); do the same for `copyinstr` and `copyinstr_new`. Add mappings for user addresses to each process's kernel page table so that copyin_new and copyinstr_new work. 
-
 
 
 This scheme relies on the user virtual address range not overlapping the range of virtual addresses that the kernel uses for its own instructions and data. 
@@ -531,6 +462,259 @@ see `kvminit()` in kernel/vm.c, kernel/memlayout.h, and Figure 3-4 in the text. 
 Linux uses a technique similar to what you have implemented. Until a few years ago many kernels used the same per-process page table in both user and kernel space, with mappings for both user and kernel addresses, to avoid having to switch page tables when switching between user and kernel space. However, that setup allowed side-channel attacks such as Meltdown and Spectre.
 
 Explain why the third test srcva + len < srcva is necessary in copyin_new(): give values for srcva and len for which the first two test fail (i.e., they will not cause to return -1) but for which the third one is true (resulting in returning -1).
+
+## Reference
+
+- https://zhuanlan.zhihu.com/p/280914560
+
+## Solution
+
+
+我先概述思路，然后给出具体修改点与示例代码（伪/片段），最后列出常见坑和测试建议。为了条理清晰，我用小标题分块说明。
+
+### 核心思路
+
+在每个进程的 内核页表（kpagetable） 中，为用户虚拟地址范围建立映射（映射到同样的物理页），但不要设置 PTE_U（因为设置 PTE_U 的页在内核态不可访问）。这样内核函数 copyin_new/copyinstr_new 可以直接在内核地址空间通过内核页表去解引用用户指针，从而避免逐字节 software walk。
+
+好——这是个很棒也很实用的练习。下面我把思路、必做修改点、关键代码片段和调试提示都列清楚，像把迷宫的墙逐块推倒，最后你能拿到能直接在内核里用 `*(char*)va` 读用户内存的能力（通过进程的内核页表 `p->kpagetable`）。
+
+---
+
+### 什么时候要同步 kpagetable
+
+**每次用户页映射变化时**，都必须同步更新该进程的 `kpagetable`。主要位置：
+
+* `userinit()`：为第一个进程（initproc）把它的用户页也映射进它的 `kpagetable`。
+* `fork()`：为 child 建立 kpagetable（或在 child 创建好自己的 kpagetable 后，把 child 的用户页映射进 child->kpagetable）。
+* `exec()`：先构建新的用户页表，然后把用户地址映射进新进程的 kpagetable（并清理旧 kpagetable）。
+* `sbrk()` / `growproc()` / `uvmalloc()`：为新增的用户页在 p->kpagetable 中建映射。
+* `uvmunmap()` / `uvmfree()` / `exit()`：当用户页被释放/撤销时，也要在 p->kpagetable 中把对应 entry 清零（否则 later `freewalk(p->kpagetable)` 会看到 leaf 并 panic）。
+
+建议把“建立/移除 kpagetable 对应用户映射”的逻辑封装成小函数，便于在这些位置统一调用。
+
+---
+
+### PTE 权限问题（关键）
+
+* **在内核页表中给用户地址建映射时，必须**把 `PTE_U` **去掉**。
+  因为带 `PTE_U` 的页在 RISC-V 下从内核模式（privilege=S / M）无法访问。
+* 保留 `PTE_V` 与必要的 R/W/X 标志（通常 `PTE_V|PTE_R|PTE_W` 即可；是否给 X 取决于需求，但无害）。
+* 即：`new_flags = (PTE_FLAGS(orig_pte) & ~PTE_U) | PTE_V`。
+
+---
+
+### 推荐的 helper 函数（示例）
+
+在 `kernel/vm.c` 或新文件中加入两个 helper（伪代码）：
+
+```c
+
+
+// 在 kpt (kernel pagetable of process) 上把 va 映射到 pa，flags 为用户页的 flags，
+// 但禁止 PTE_U（确保内核访问权限）。
+static void
+kvm_map_user(pagetable_t kpt, uint64 va, uint64 pa, int flags) {
+  pte_t *kpte = walk(kpt, va, 1); // 为 kernel page table 分配页表页（如果需要）
+  if(kpte == 0) panic("kvm_map_user: walk");
+  int kflags = (flags & ~PTE_U) | PTE_V;
+  *kpte = PA2PTE(pa) | kflags;
+}
+
+// 在 kpt 上取消 va 映射（清空对应 pte）
+static void
+kvm_unmap_user(pagetable_t kpt, uint64 va) {
+  pte_t *kpte = walk(kpt, va, 0);
+  if(kpte)
+    *kpte = 0;
+}
+
+
+void u2kvmcopy(pagetable_t upgtbl, pagetable_t kpgtbl, uint64 oldsz, uint64 newsz) {
+  uint64 va,pa,a;
+  uint flags;
+  pte_t *upte,*kpte;
+
+  va = PGROUNDUP(oldsz);
+  for(a= va;a<newsz;a+=PGSIZE){
+    if((upte= walk(upgtbl, a, 0)) ==0){
+      panic("u2kvmcopy: user pte should exist");
+    }
+    // 为 kernel page table 分配页表页（如果需要）
+    if((kpte=walk(kpgtbl,a,1)) ==0){
+      panic("u2kvmcopy: kernel pte walk failed");
+    }
+    pa = PTE2PA(*upte);
+    flags =  (PTE_FLAGS(*upte) & (~PTE_U)) | PTE_V; // remove PTE_U flag,确保内核访问权限
+    *kpte = PA2PTE(pa) | flags;
+  }
+}
+
+```
+
+注意：
+
+* `PA2PTE` 这里按 xv6 定义来用（如果项目名不同，用相应宏）。
+* `walk(kpt, va, 1)` 会在 kernel pagetable 中分配页表页（这是允许的：kernel pagetable 的页表页是内核可分配的内存）。
+
+---
+
+### 流程示例（完整小流程）
+
+1. 在 `proc` 结构里为每个进程分配 `kpagetable`（你先前 lab 已做）。
+2. 在 `userinit()`：建立 init 的用户页表后，把用户页全部映射进 `initproc->kpagetable`（用 `kvm_map_user`）。
+3. 在 `fork()`：当 child 的用户页被复制好后，为 child 建立 kpagetable 对应映射（同样遍历 child->pagetable）。
+4. 在 `sbrk()` / `uvmalloc()`：对新分配页在 `p->kpagetable` 做 `kvm_map_user`。
+5. 在 `uvmunmap()`：当释放用户页时，同时 `kvm_unmap_user` 清 kpagetable 中对应的 pte。
+6. 在 `uvmfree()`：先 `uvmunmap()`（已同步清 kpagetable），再 `freewalk(pagetable)`。随后 `freewalk(p->kpagetable)` 释放 kernel 页表自身的页表页，然后 `kfree(p->kpagetable)`（按你 lab 的实现）。
+
+---
+
+如果你愿意，我可以继续做两件事中的任意一个（按你现在最需要的）：
+
+1. 给出**具体补丁级别的示例代码**（把上面伪代码写成能直接贴进 xv6 的 C 代码片段，并标注要改的函数/文件行），或者
+2. 根据你当前仓库（或你贴来的一段关键实现）**审查并指出遗漏**（比如你把 `uvmunmap()` 改成了什么，或者 `fork()` 里怎么处理 child->kpagetable），帮你把最后一小步完成。
+
+你选哪条路？我已经准备好把这些伪代码变成能运行的补丁（或者直接 review 你现有修改），别害羞——把你想要我动手的层级丢过来。
+
+### 在哪些函数插入同步（示例位置和逻辑）
+
+下面给出典型修改点与逻辑伪代码/提示：
+
+### 1) `userinit()`（创建第一个进程）
+
+在 `userinit` 创建 `initproc->pagetable` 后，要把 init 的用户页同步到 `initproc->kpagetable`：
+
+```c
+// userinit 在建立 initpagetable 并加载用户映像后
+for (uint64 a = 0; a < init_sz; a += PGSIZE) {
+  pte_t *pte = walk(initproc->pagetable, a, 0);
+  if (pte && (*pte & PTE_V) && (PTE_FLAGS(*pte) & (PTE_R|PTE_W|PTE_X))) {
+    uint64 pa = PTE2PA(*pte);
+    int flags = PTE_FLAGS(*pte);
+    kvm_map_user(initproc->kpagetable, a, pa, flags);
+  }
+}
+```
+
+
+
+
+
+### 2) `fork()`（复制父的用户页到子）
+
+`uvmcopy()` 已为 child 建立用户页（并复制物理页面），你需要在 `fork()` 返回之前，为 child 的 `kpagetable` 建立相同的内核可访问映射。两个做法：
+
+* 修改 `uvmcopy()` 使其在复制每个页时也在 child->kpagetable 建映射；或
+* 在 `fork()` 中，遍历 child 的新用户地址空间并调用 `kvm_map_user`（更模块化）。
+
+示例（在 fork 中）：
+
+```c
+// fork() 在调用 uvmcopy(parent->pagetable, child->pagetable, sz) 后
+for (uint64 a = 0; a < sz; a += PGSIZE) {
+  pte_t *pte = walk(child->pagetable, a, 0);
+  if (pte && (*pte & PTE_V) && (PTE_FLAGS(*pte) & (PTE_R|PTE_W|PTE_X))) {
+    uint64 pa = PTE2PA(*pte);
+    int flags = PTE_FLAGS(*pte);
+    kvm_map_user(child->kpagetable, a, pa, flags);
+  }
+}
+```
+
+### 3) `sbrk()` / `growproc()`（给进程扩张/收缩地址空间）
+
+当你 `uvmalloc()` 分配了新物理页并在用户页表中设置 PTE 时，同时：
+
+* 调用 `kvm_map_user(p->kpagetable, va, pa, flags)` 为新页建立内核映射。
+  当你在 `uvmunmap()`（或 `uvmdealloc()`）释放用户页时，同时 `kvm_unmap_user(p->kpagetable, va)`。
+
+建议把这一同步放在 `uvmunmap()` / `uvmalloc()` 的调用点（也可以在它们内部添加同步逻辑）。
+
+### 4) `uvmunmap()`（撤销用户映射）
+
+你已经展示过 `uvmunmap()` 会 `*pte = 0;` 并在 `do_free` 时 `kfree(pa)`。在这里**同时**把 kernel pagetable 对应条目清零，避免 later freewalk 在 kpagetable 上 panic：
+
+在 `uvmunmap` 的循环中加入：
+
+```c
+// 在释放用户页之后，清除内核页表对应条目
+pte_t *kpte = walk(proc->kpagetable, a, 0);
+if (kpte) *kpte = 0;
+```
+
+注意：要能获取到当前进程 `proc` 的 `kpagetable`（在 `uvmunmap` 的上下文中也许有 `proc` 可访问；如果没有，把 `kpagetable` 作为参数传入或让调用方负责同步）。
+
+### 5) `uvmfree()` / 进程退出
+
+`uvmfree()` 先 `uvmunmap()`（已经会清空内核页表对应条目），然后 `freewalk(pagetable)` 释放用户页表页。同理，当进程退出时，也要 `freewalk(proc->kpagetable)` 释放内核页表页；但确保在 free 之前所有 leaf 在 `kpagetable` 都已经清零（`uvmunmap` 的同步保证了这一点）。最后释放 `proc->kpagetable` 本身。
+
+---
+
+### 改 `copyin/copyinstr` 的位置
+
+* 在 `kernel/vm.c` 中，把原来的 `copyin` 替换成简单调用 `copyin_new`（所在文件 `kernel/vmcopyin.c`，老师应该已经给出）：
+
+```c
+int
+copyin(pagetable_t pagetable, void *dst, uint64 srcva, uint64 len) {
+  return copyin_new(pagetable, dst, srcva, len);
+}
+```
+
+同理 `copyinstr` 指向 `copyinstr_new`。这样你只需要确保 `copyin_new` 能通过 `p->kpagetable` 直接解引用用户地址。
+
+注意：`copyin_new` 可能要求使用 `myproc()->kpagetable` 或者传入 `proc->kpagetable`——看老师给的实现，保证在它可用即可。
+
+---
+
+### PLIC（用户地址上限）问题
+
+题目提醒：用户地址空间必须 < kernel 最低虚拟地址（xv6 中 boot 后 PLIC 在 `0x0c000000`）。所以你要确保：
+
+* `growproc()` / `sbrk()` 不会把 `sz` 扩到 `>= PLIC`。比如在 `sys_sbrk` 或 `growproc` 增大前检查：
+
+```c
+if (newsz >= PLICBASE) return -1;
+```
+
+在 xv6 中 PLIC 地址宏可在 `memlayout.h` 找到（例如 `PLIC` 或 `PLICBASE`）。把这个检查放到增长路径上。
+
+---
+
+### 调试与测试建议（非常重要）
+
+1. **先完成 copyin -> copyin_new 替换并测试**。在没有做好 kpagetable 映射前，`copyin_new` 会失败。按提示先做 `copyin` 替换再逐步加映射。
+2. **print 调试**：
+
+   * 在 `fork()`/`sbrk()`/`exec()` 添加打印，确认 `walk(p->kpagetable, va, 0)` 返回非空且 `PTE_V` 已被设置且 `PTE_U` 为 0。
+3. **触发 panic 的断言**：
+
+   * 如果 `freewalk()` 在 kpagetable 上 panic 出现 “leaf”，说明某些用户映射没有被从 kpagetable 清掉 —— 回头看 `uvmunmap()` 的同步是否漏掉。
+4. **用户空间边界**：
+
+   * 测试字符串跨页（`copyinstr`）能否正确处理，尤其跨页边界的场景。
+5. **最大用户空间限制**：
+
+   * 写测试用例把进程 `sbrk` 到接近 PLIC 地址，验证被拒绝。
+6. **内核访问验证**：
+
+   * 在 `copyin_new` 工作时，用 GDB 或在内核打印读到的字节，确认实际读取到内存是用户写入的值而非 0/垃圾。
+7. **race / 同步**：
+
+   * 简化起见，实验环境通常是单 CPU 或简单调度，但要注意：若在并行场景下，映射改变时内核直接 deref 可能需要额外的同步（在 xv6 lab 标准环境下通常不要求复杂同步，但要意识到这个点）。
+
+---
+
+### 常见错误与坑
+
+* 忘了**去掉 PTE_U** → 访问时会被拒绝（page fault / trap）。
+* 在某处给用户页建立内核映射但没有在释放时把它清掉 → `freewalk(kpagetable)` panic("leaf")。
+* `walk(kpagetable, va, 1)` 在需要时会给 kernel pagetable 分配页表页——如果你在 `fork()` 时没初始化 child->kpagetable，`walk(...,1)` 会分配，确保 `kpagetable` 本身已经分配并可用。
+* 忘记在 `userinit()` 为 init 进程建 kpagetable 的用户映射 → `copyin_new` 在第一次用时会失败（早期 init 需要能被内核读取）。
+* 忘记对 `exec()` 的清理/建立映射（exec 变换地址空间后 kernel mapping 需同步）。
+
+---
+
 
 ## Test
 

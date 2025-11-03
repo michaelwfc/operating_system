@@ -191,7 +191,7 @@ A leaf PTE is one that directly maps a virtual page to a physical page.
 In RISC-V, a leaf PTE must have at least one of the R/W/X permission bits set (PTE_R, PTE_W, PTE_X).
 That means: “this PTE is a valid mapping to memory.”
 
-Q: Why (pte & (PTE_R | PTE_W | PTE_X)) == 0 means not a leaf
+Q: Why (pte & (PTE_R | PTE_W | PTE_X)) == 0 means not a leaf?
 Suppose you see a valid entry (pte & PTE_V).
 If none of the R/W/X bits are set, the PTE is being used only as a pointer to another page table.
 Therefore it’s not a leaf, so you must recurse into that next-level table.
@@ -560,7 +560,21 @@ $10 = 0x80000000
 
 # get the level 2 index for va=KERNBASE
 (gdb) p/d ($KERNBASE>>30) & 0x3ff
-$17 = 2
+$17 = 2   
+# KERNBASE in the 2nd entry of top level page table
+
+(gdb) p/d ($KERNBASE>>21) & 0x3ff
+$6 = 0
+(gdb) p/d ($KERNBASE>>12) & 0x3ff
+$7 = 0
+
+
+(gdb) set $VIRTIO0=0x10001000
+(gdb) p/d ($VIRTIO0>>30) & 0x3ff
+$8 = 0
+
+(gdb) p/x $KERNBASE+$PGSIZE
+
 # test if the PTE is valid
 (gdb) p/x kpgtbl[2] & 0x1
 $20 = 0x1

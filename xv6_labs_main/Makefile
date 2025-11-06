@@ -46,6 +46,11 @@ ifeq ($(LAB),pgtbl)
 OBJS += $K/vmcopyin.o
 endif
 
+ifeq ($(LAB), demo)
+OBJS += \
+	$K/demo.o
+endif
+
 ifeq ($(LAB),$(filter $(LAB), pgtbl lock))
 OBJS += \
 	$K/stats.o\
@@ -165,13 +170,6 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 .PRECIOUS: %.o
 
 UPROGS=\
-    $U/_trace\
-	$U/_sysinfotest\
-	$U/_sleep\
-	$U/_pingpong\
-	$U/_primes\
-	$U/_find\
-	$U/_xargs\
 	$U/_cat\
 	$U/_echo\
 	$U/_forktest\
@@ -188,6 +186,16 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+
+ifeq ($(LAB),util)
+UPROGS += \
+	$U/_sleep \
+	$U/_pingpong \
+	$U/_primes \
+	$U/_find \
+	$U/_xargs 
+endif
+
 
 ifeq ($(LAB),$(filter $(LAB), pgtbl lock))
 UPROGS += \

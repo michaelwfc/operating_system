@@ -17,13 +17,6 @@ Course schedule, labs has 2020 version, 2021 version,.... and latest version, we
 
 - 视频的中文文档 https://mit-public-courses-cn-translatio.gitbook.io/mit6-s081/
 
-### Labs
-labs has 2020 version, 2021 version, we will use 2020 version
-- **Assignments**: https://pdos.csail.mit.edu/6.828/2020/schedule.html (11 labs, see course website for specific requirements)
-
-Referecen labs for 2020 version
-- https://github.com/PKUFlyingPig/Self-learning-Computer-Science?tab=readme-ov-file
-
 
 # xv6
 - **Course Textbook**: https://pdos.csail.mit.edu/6.828/2021/xv6/book-riscv-rev2.pdf

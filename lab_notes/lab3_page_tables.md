@@ -413,7 +413,7 @@ If usertests passes, you can be confident that:
 - All existing kernel functionality is preserved
 
 ```bash
-# In the xv6_labs_2021 directory
+# In the xv6_labs_main directory
 make qemu
 
 # Then in the QEMU terminal

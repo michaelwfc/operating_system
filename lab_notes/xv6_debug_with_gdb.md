@@ -98,11 +98,6 @@ make -nB qemu | vim -
 
 # 根据需要修改一些配置： 优化等级，CPU 数，编译指令
 
-# 配置 vscode
-bear make qemu # 自动生成  compile_commands.json
-
-
-
 ```
 
 
@@ -210,13 +205,13 @@ The 0x0 tells GDB where the symbols are located in memory:
 
 ## GDB setting .gdbinit
 
-### 1. Set xv6_labs_2021/.gdbinit
+### 1. Set xv6_labs_main/.gdbinit
 ```bash
 cat ~/.gdbinit 
-add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_2021/.gdbinit
-source /mnt/e/projects/operating_system/xv6_labs_2021/.gbdinit_my
+add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_main/.gdbinit
+source /mnt/e/projects/operating_system/xv6_labs_main/.gbdinit_my
 
-# xv6_labs_2021/.gdbinit_my
+# xv6_labs_main/.gdbinit_my
 set confirm off
 set architecture riscv:rv64
 symbol-file kernel/kernel
@@ -308,9 +303,9 @@ Nice — let’s go line by line through that `.gdbinit`. It’s basically a sta
 # Type "apropos word" to search for commands related to "word"...
 # --Type <RET> for more, q to quit, c to continue without paging--
 # Reading symbols from kernel/kernel...
-# warning: File "/mnt/e/projects/operating_system/xv6_labs_2021/.gdbinit" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+# warning: File "/mnt/e/projects/operating_system/xv6_labs_main/.gdbinit" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
 # To enable execution of this file add
-#         add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_2021/.gdbinit
+#         add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_main/.gdbinit
 # line to your configuration file "/home/michael/.gdbinit".
 # To completely disable this security protection add
 #         set auto-load safe-path /
@@ -321,7 +316,7 @@ Nice — let’s go line by line through that `.gdbinit`. It’s basically a sta
 
 cd ~/.gdbinit
 cat .gdbinit 
-add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_2021/.gdbinit
+add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_main/.gdbinit
 
 ```
 
@@ -522,12 +517,12 @@ set riscv use-compressed-breakpoints yes
 gdb-multiarch user/_sh
 
 (gdb) info target
-Symbols from "/mnt/e/projects/operating_system/xv6_labs_2021/kernel/kernel".
+Symbols from "/mnt/e/projects/operating_system/xv6_labs_main/kernel/kernel".
 Remote serial target in gdb-specific protocol:
 Debugging a target over a serial line.
         While running this, GDB does not access memory from...
 Local exec file:
-        `/mnt/e/projects/operating_system/xv6_labs_2021/user/_sh',
+        `/mnt/e/projects/operating_system/xv6_labs_main/user/_sh',
         file type elf64-littleriscv.
         Entry point: 0xa60
         0x0000000000000000 - 0x000000000000137a is .text
@@ -614,8 +609,8 @@ extensions.json
       "name": "Attach to QEMU (gdb-multiarch)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/xv6_labs_2021/kernel/kernel",
-      "cwd": "${workspaceFolder}/xv6_labs_2021",
+      "program": "${workspaceFolder}/xv6_labs_main/kernel/kernel",
+      "cwd": "${workspaceFolder}/xv6_labs_main",
       "miDebuggerServerAddress": "127.0.0.1:26000",
       "miDebuggerPath": "/usr/bin/gdb-multiarch",
       "MIMode": "gdb",

@@ -433,7 +433,7 @@ rdx    0x7fffffffdde0   140737488344800
 
 (gdb) info inferiors
   Num  Description       Executable        
-* 1    process 1         /mnt/e/projects/operating_system/xv6_labs_2021/kernel/kernel 
+* 1    process 1         /mnt/e/projects/operating_system/xv6_labs_main/kernel/kernel 
 
 # use pmamp to print process memory maps
 (gdb) !pmap $pid
@@ -462,14 +462,18 @@ rdx    0x7fffffffdde0   140737488344800
 # Ctrl+P - Recall previous command (equivalent to up arrow in normal mode)
 # Ctrl+N - Recall next command (equivalent to down arrow in normal mode)
 
+(gdb) tui enable
 # show the asm code
 (gdb) layout asm
 (gdb) layout reg
-(gdb) focus reg
-(gdb) focus asm
 (gdb) layout src # show the source code in window
 # split window to show both asm and source code
 (gdb) layout split
+
+# focus the register window
+(gdb) focus reg
+(gdb) focus asm
+
 
 
 (gdb) tui disabble

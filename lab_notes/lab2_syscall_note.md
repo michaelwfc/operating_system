@@ -414,7 +414,7 @@ $ make qemu-gdb
 # you need to tell GDB to load the kernel ELF before connecting to QEMU. The xv6 Makefile usually provides a script for this, called kernel.asm / kernel.sym or a .gdbinit.
 # cd ~
 # touch .gdbinit
-# echo "add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_2021/.gdbinit">.gdbinit
+# echo "add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_main/.gdbinit">.gdbinit
 # (gdb) file user/_trace
 
 

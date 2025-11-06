@@ -1,6 +1,14 @@
 
-# References 
-- Tools Used in 6.S081 : https://pdos.csail.mit.edu/6.828/2021/tools.html
+# Labs
+labs has 2020 version, 2021 version, we will use 2020 version
+- **Assignments**: https://pdos.csail.mit.edu/6.828/2020/schedule.html (11 labs, see course website for specific requirements)
+
+## Referecen 
+- Tools Used in 6.S081 : https://pdos.csail.mit.edu/6.828/2020/tools.html
+- $ git clone git://g.csail.mit.edu/xv6-labs-2020
+- labs repo for 2020 version : https://github.com/PKUFlyingPig/Self-learning-Computer-Science?tab=readme-ov-file
+
+
 
 # wsl
 
@@ -71,16 +79,17 @@ From Windows, you can access all of your WSL files under the "\\wsl$\" directory
 
 
 
-# xv6-labs-2021
+# xv6-labs-repos
+
+## Repos
+- git clone git://g.csail.mit.edu/xv6-labs-2020
+- git clone https://github.com/PKUFlyingPig/MIT6.S081-2020fall.git
+- git clone git://g.csail.mit.edu/xv6-labs-2021
+- git clone https://github.com/mit-pdos/xv6-riscv.git
+
+
 
 ```bash
-https://github.com/PKUFlyingPig/MIT6.S081-2020fall.git
-
-# $ git clone git://g.csail.mit.edu/xv6-labs-2021
-# Cloning into 'xv6-labs-2021'...
-
-# git clone https://github.com/mit-pdos/xv6-riscv.git
-...
 $ cd xv6-labs-2021
 git branch -a
 

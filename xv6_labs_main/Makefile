@@ -46,10 +46,6 @@ ifeq ($(LAB),pgtbl)
 OBJS += $K/vmcopyin.o
 endif
 
-ifeq ($(LAB), demo)
-OBJS += \
-	$K/demo.o
-endif
 
 ifeq ($(LAB),$(filter $(LAB), pgtbl lock))
 OBJS += \

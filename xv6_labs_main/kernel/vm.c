@@ -337,10 +337,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: walk");
     
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      // panic("uvmunmap: not mapped");
       // ============ demo code: page faults for lazy allocation ============ 
       // when using lazy allocation, the page fault handler will allocate the page and update the PTE 
-      //  continue;
+       continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){

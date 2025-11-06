@@ -5,7 +5,61 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/kalloc.o",
+            "kernel/kalloc.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/kalloc.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/sleeplock.o",
+            "kernel/sleeplock.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/sleeplock.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -23,7 +77,7 @@
             "kernel/printf.o",
             "kernel/printf.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
         "file": "kernel/printf.c"
     },
     {
@@ -32,7 +86,250 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/exec.o",
+            "kernel/exec.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/exec.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/fs.o",
+            "kernel/fs.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/fs.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/proc.o",
+            "kernel/proc.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/proc.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/vmcopyin.o",
+            "kernel/vmcopyin.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/vmcopyin.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/uart.o",
+            "kernel/uart.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/uart.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/syscall.o",
+            "kernel/syscall.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/syscall.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/console.o",
+            "kernel/console.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/console.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/sysproc.o",
+            "kernel/sysproc.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/sysproc.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
+            "-fno-omit-frame-pointer",
+            "-ggdb",
+            "-DSOL_PGTBL",
+            "-DLAB_PGTBL",
+            "-mcmodel=medany",
+            "-ffreestanding",
+            "-fno-common",
+            "-nostdlib",
+            "-mno-relax",
+            "-I.",
+            "-fno-stack-protector",
+            "-fno-pie",
+            "-no-pie",
+            "-o",
+            "kernel/sysfile.o",
+            "kernel/sysfile.c"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/sysfile.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-Wall",
+            "-Werror",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -50,7 +347,7 @@
             "kernel/main.o",
             "kernel/main.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
         "file": "kernel/main.c"
     },
     {
@@ -59,7 +356,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -74,11 +371,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/stats.o",
-            "kernel/stats.c"
+            "kernel/plic.o",
+            "kernel/plic.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/stats.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/plic.c"
     },
     {
         "arguments": [
@@ -86,7 +383,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -101,11 +398,44 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/sprintf.o",
-            "kernel/sprintf.c"
+            "kernel/trap.o",
+            "kernel/trap.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/sprintf.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/trap.c"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-o",
+            "kernel/swtch.o",
+            "kernel/swtch.S"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/swtch.S"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-o",
+            "kernel/trampoline.o",
+            "kernel/trampoline.S"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/trampoline.S"
+    },
+    {
+        "arguments": [
+            "riscv64-linux-gnu-gcc",
+            "-c",
+            "-o",
+            "kernel/kernelvec.o",
+            "kernel/kernelvec.S"
+        ],
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/kernelvec.S"
     },
     {
         "arguments": [
@@ -113,7 +443,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -128,11 +458,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/file.o",
-            "kernel/file.c"
+            "kernel/virtio_disk.o",
+            "kernel/virtio_disk.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/file.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/virtio_disk.c"
     },
     {
         "arguments": [
@@ -140,34 +470,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/bio.o",
-            "kernel/bio.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/bio.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -189,7 +492,7 @@
             "user/initcode.o",
             "user/initcode.S"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
         "file": "user/initcode.S"
     },
     {
@@ -198,72 +501,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/exec.o",
-            "kernel/exec.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/exec.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/trap.o",
-            "kernel/trap.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/trap.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-o",
-            "kernel/kernelvec.o",
-            "kernel/kernelvec.S"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/kernelvec.S"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -281,7 +519,7 @@
             "kernel/pipe.o",
             "kernel/pipe.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
         "file": "kernel/pipe.c"
     },
     {
@@ -290,7 +528,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -305,11 +543,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/vm.o",
-            "kernel/vm.c"
+            "kernel/stats.o",
+            "kernel/stats.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/vm.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/stats.c"
     },
     {
         "arguments": [
@@ -317,7 +555,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -332,11 +570,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/log.o",
-            "kernel/log.c"
+            "kernel/sprintf.o",
+            "kernel/sprintf.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/log.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/sprintf.c"
     },
     {
         "arguments": [
@@ -344,7 +582,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -359,11 +597,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/string.o",
-            "kernel/string.c"
+            "kernel/bio.o",
+            "kernel/bio.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/string.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/bio.c"
     },
     {
         "arguments": [
@@ -371,7 +609,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -386,11 +624,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/proc.o",
-            "kernel/proc.c"
+            "kernel/file.o",
+            "kernel/file.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/proc.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/file.c"
     },
     {
         "arguments": [
@@ -398,61 +636,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/sysfile.o",
-            "kernel/sysfile.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/sysfile.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/plic.o",
-            "kernel/plic.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/plic.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -470,7 +654,7 @@
             "kernel/start.o",
             "kernel/start.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
         "file": "kernel/start.c"
     },
     {
@@ -479,7 +663,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -494,22 +678,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/uart.o",
-            "kernel/uart.c"
+            "kernel/log.o",
+            "kernel/log.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/uart.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-o",
-            "kernel/trampoline.o",
-            "kernel/trampoline.S"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/trampoline.S"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/log.c"
     },
     {
         "arguments": [
@@ -517,7 +690,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -532,11 +705,11 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/sleeplock.o",
-            "kernel/sleeplock.c"
+            "kernel/vm.o",
+            "kernel/vm.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/sleeplock.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/vm.c"
     },
     {
         "arguments": [
@@ -544,137 +717,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/console.o",
-            "kernel/console.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/console.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-o",
-            "kernel/entry.o",
-            "kernel/entry.S"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/entry.S"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/kalloc.o",
-            "kernel/kalloc.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/kalloc.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-o",
-            "kernel/swtch.o",
-            "kernel/swtch.S"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/swtch.S"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/virtio_disk.o",
-            "kernel/virtio_disk.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/virtio_disk.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/syscall.o",
-            "kernel/syscall.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/syscall.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -692,7 +735,7 @@
             "kernel/spinlock.o",
             "kernel/spinlock.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
         "file": "kernel/spinlock.c"
     },
     {
@@ -701,7 +744,7 @@
             "-c",
             "-Wall",
             "-Werror",
-            "-O",
+            "-O0",
             "-fno-omit-frame-pointer",
             "-ggdb",
             "-DSOL_PGTBL",
@@ -716,64 +759,21 @@
             "-fno-pie",
             "-no-pie",
             "-o",
-            "kernel/sysproc.o",
-            "kernel/sysproc.c"
+            "kernel/string.o",
+            "kernel/string.c"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/sysproc.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/string.c"
     },
     {
         "arguments": [
             "riscv64-linux-gnu-gcc",
             "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
             "-o",
-            "kernel/fs.o",
-            "kernel/fs.c"
+            "kernel/entry.o",
+            "kernel/entry.S"
         ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/fs.c"
-    },
-    {
-        "arguments": [
-            "riscv64-linux-gnu-gcc",
-            "-c",
-            "-Wall",
-            "-Werror",
-            "-O",
-            "-fno-omit-frame-pointer",
-            "-ggdb",
-            "-DSOL_PGTBL",
-            "-DLAB_PGTBL",
-            "-mcmodel=medany",
-            "-ffreestanding",
-            "-fno-common",
-            "-nostdlib",
-            "-mno-relax",
-            "-I.",
-            "-fno-stack-protector",
-            "-fno-pie",
-            "-no-pie",
-            "-o",
-            "kernel/vmcopyin.o",
-            "kernel/vmcopyin.c"
-        ],
-        "directory": "/mnt/e/projects/operating_system/xv6_labs_2021",
-        "file": "kernel/vmcopyin.c"
+        "directory": "/mnt/e/projects/operating_system/xv6_labs_main",
+        "file": "kernel/entry.S"
     }
 ]

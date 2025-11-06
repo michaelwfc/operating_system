@@ -21,7 +21,7 @@
         "reveal": "always",
         "focus": true
       }
-    ,}
+    },
 
     {
       "type": "cppbuild",

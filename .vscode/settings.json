@@ -3,7 +3,7 @@
   "C_Cpp.default.compilerPath": "/usr/bin/clang",
   "clangd.path": "/usr/bin/clangd",
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/xv6_labs_2021"
+    "--compile-commands-dir=${workspaceFolder}/xv6_labs_main"
   ],
   "C_Cpp.intelliSenseEngine": "disabled",
   "C_Cpp.formatting": "disabled",

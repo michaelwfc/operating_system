@@ -6,7 +6,7 @@
         "/usr/include", // Standard system includes
         "/usr/local/include", // Local includes
         "${workspaceFolder}/code_examples/include",
-        "${workspaceFolder}/xv6_labs_main"
+        "${workspaceFolder}/xv6-labs-2020"
       ],
       "compilerPath": "/usr/bin/gcc", // Path to the compiler
       "defines": ["_DEBUG", "UNICODE", "_UNICODE"],

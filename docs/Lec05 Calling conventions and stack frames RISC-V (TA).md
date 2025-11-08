@@ -31,6 +31,258 @@ RISC-V和x86并没有它们第一眼看起来那么相似。RISC-V中的RISC是�
 如果查看RISC-V的文档，可以发现RISC-V的特殊之处在于：它区分了Base Integer Instruction Set和Standard Extension Instruction Set。Base Integer Instruction Set包含了所有的常用指令，比如add，mult。除此之外，处理器还可以选择性的支持Standard Extension Instruction Set。例如，一个处理器可以选择支持Standard Extension for Single-Precision Float-Point。这种模式使得RISC-V更容易支持向后兼容。 每一个RISC-V处理器可以声明支持了哪些扩展指令集，然后编译器可以根据支持的指令集来编译代码。
 
 
+
+
+
+# 5.3 gdb和汇编代码执行
+
+# 5.4 RISC-V寄存器
+![image](../images/Table18.2%20RISC-V%20calling%20convention%20register%20usage..png)
+
+## RISC-V calling convention register usage.
+
+| Register | ABI Name | Description                      | Saver  |
+| -------- | -------- | -------------------------------- | ------ |
+| x0       | zero     | Hard-wired zero                  | —      |
+| x1       | ra       | Return address                   | Caller |
+| x2       | sp       | Stack pointer                    | Callee |
+| x3       | gp       | Global pointer                   | —      |
+| x4       | tp       | Thread pointer                   | —      |
+| x5–7     | t0–2     | Temporaries                      | Caller |
+| x8       | s0/fp    | Saved register/frame pointer     | Callee |
+| x9       | s1       | Saved register                   | Callee |
+| x10–11   | a0–1     | Function arguments/return values | Caller |
+| x12–17   | a2–7     | Function arguments               | Caller |
+| x18–27   | s2–11    | Saved registers                  | Callee |
+| x28–31   | t3–6     | Temporaries                      | Caller |
+| f0–7     | ft0–7    | FP temporaries                   | Caller |
+| f8–9     | fs0–1    | FP saved registers               | Callee |
+| f10–11   | fa0–1    | FP arguments/return values       | Caller |
+| f12–17   | fa2–7    | FP arguments                     | Caller |
+| f18–27   | fs2–11   | FP saved registers               | Callee |
+| f28–31   | ft8–11   | FP temporaries                   | Caller |
+
+
+基本上来说，RISC-V中通常的指令是64bit，但是在Compressed Instruction中指令是16bit。在Compressed Instruction中我们使用更少的寄存器，也就是x8 - x15寄存器。
+
+
+通常我们在谈到寄存器的时候，我们会用它们的ABI名字。不仅是因为这样描述更清晰和标准，同时也因为在写汇编代码的时候使用的也是ABI名字
+
+为什么s1寄存器和其他的s寄存器是分开的，因为s1在Compressed Instruction是有效的，而s2-11却不是。除了Compressed Instruction，寄存器都是通过它们的ABI名字来引用
+
+
+当我们调用函数时，你可以看到这里有a0 - a7寄存器。
+a0到a7寄存器是用来作为函数的参数。如果一个函数有超过8个参数，我们就需要用内存了。从这里也可以看出，当可以使用寄存器的时候，我们不会使用内存，我们只在不得不使用内存的场景才使用它。
+
+
+
+
+- Caller Saved寄存器在函数调用的时候不会保存
+- Callee Saved寄存器在函数调用的时候会保存
+- 
+一个Caller Saved寄存器可能被其他函数重写。假设我们在函数a中调用函数b，任何被函数a使用的并且是Caller Saved寄存器，调用函数b可能重写这些寄存器。
+
+Return address寄存器（注，保存的是函数返回的地址），你可以看到ra寄存器是Caller Saved，这一点很重要，它导致了当函数a调用函数b的时侯，b会重写Return address。
+
+
+```bash
+
+riscv64-linux-gnu-gcc -S -O0 kernel/demos.c -o kernel/demos.s
+
+# Disassemble the object file After make
+riscv64-linux-gnu-objdump -d kernel/demos.o > kernel/demos.asm
+riscv64-linux-gnu-objdump -S -O0  kernel/demos.o > kernel/demos.asm
+
+code  kernel/demos.asm
+```
+
+
+# 5.5 Stack
+
+## Stack Frame
+下面是一个非常简单的栈的结构图，其中每一个区域都是一个Stack Frame，每执行一次函数调用就会产生一个Stack Frame。
+![image](../images/stack-frames-01.png)
+
+
+每一次我们调用一个函数，函数都会为自己创建一个Stack Frame，并且只给自己用。 函数通过移动Stack Pointer来完成Stack Frame的空间分配。
+对于Stack来说，是从高地址开始向低地址使用。所以栈总是向下增长。当我们想要创建一个新的Stack Frame的时候，总是对当前的Stack Pointer做减法。
+
+一个函数的Stack Frame包含了保存的寄存器，本地变量，并且，如果函数的参数多于8个，额外的参数会出现在Stack中。所以Stack Frame大小并不总是一样，即使在这个图里面看起来是一样大的。不同的函数有不同数量的本地变量，不同的寄存器，所以Stack Frame的大小是不一样的。但是有关Stack Frame有两件事情是确定的：
+- Return address总是会出现在Stack Frame的第一位
+- 指向前一个Stack Frame的指针也会出现在栈中的固定位置
+
+
+### Stack Frame 中有两个重要的寄存器
+- SP（Stack Pointer），它指向Stack的底部并代表了当前Stack Frame的位置。
+- FP（Frame Pointer），它指向当前Stack Frame的顶部。因为Return address和指向前一个Stack Frame的的指针都在当前Stack Frame的固定位置，所以可以通过当前的FP寄存器寻址到这两个数据。
+
+我们保存前一个Stack Frame的指针的原因是为了让我们能跳转回去。所以当前函数返回时，我们可以将前一个Frame Pointer存储到FP寄存器中。所以我们使用Frame Pointer来操纵我们的Stack Frames，并确保我们总是指向正确的函数。
+
+Stack Frame必须要被汇编代码创建，所以是编译器生成了汇编代码，进而创建了Stack Frame。所以通常，在汇编代码中，函数的最开始你们可以看到Function prologue，之后是函数的本体，最后是Epilogue。这就是一个汇编函数通常的样子。
+
+## leaf函数
+在我们之前的sum_to函数中，只有函数主体，并没有Stack Frame的内容。它这里能正常工作的原因是它足够简单，并且它是一个leaf函数。leaf函数是指不调用别的函数的函数，它的特别之处在于它不用担心保存自己的Return address或者任何其他的Caller Saved寄存器，因为它不会调用别的函数。
+
+另一个函数sum_then_double就不是一个leaf函数了，这里你可以看到它调用了sum_to。
+
+
+
+## Demo frame
+
+```bash
+b dummymain
+
+(gdb) i frame
+Stack level 0, frame at 0x3fffff9f80:
+ pc = 0x800062fe in dummymain (kernel/demos.c:38);
+    saved pc = 0x80006388
+ called by frame at 0x3fffff9fb0
+ source language c.
+ Arglist at 0x3fffff9f80, args: argc=argc@entry=3,
+    argv=argv@entry=0x3fffff9f88
+ Locals at 0x3fffff9f80, Previous frame's sp is 0x3fffff9f80
+Could not fetch register "ustatus"; remote failure reply 'E14
+
+(gdb) backtrace
+#0  dummymain (argc=argc@entry=3, argv=argv@entry=0x3fffff9f88)
+    at kernel/demos.c:38
+#1  0x0000000080006388 in demo4 () at kernel/demos.c:46
+#2  0x0000000080002dd2 in sys_demo4 () at kernel/sysproc.c:121
+#3  0x0000000080002b4a in syscall () at kernel/syscall.c:149
+#4  0x0000000080002834 in usertrap () at kernel/trap.c:67
+#5  0x000000000000008e in ?? ()
+
+
+
+(gdb) frame 3
+#3  0x0000000080002b4a in syscall () at kernel/syscall.c:149
+   0x0000000080002b48 <syscall+60>:     82 97   jalr    a5
+=> 0x0000000080002b4a <syscall+62>:     23 38 a9 06     sd      a0,112(s2)
+   0x0000000080002b4e <syscall+66>:     39 a8   j       0x80002b6c <syscall+96>
+
+(gdb) i frame
+# Stack level 3, frame at 0x3fffff9fe0:
+#  pc = 0x80002b4a in syscall (kernel/syscall.c:149); saved pc = 0x80002834
+#  called by frame at 0x3fffffa000, caller of frame at 0x3fffff9fc0
+#  source language c.
+#  Arglist at 0x3fffff9fe0, args:
+#  Locals at 0x3fffff9fe0, Previous frame's sp is 0x3fffff9fe0
+#  Saved registers:
+#   ra at 0x3fffff9fd8, fp at 0x3fffff9fd0, s1 at 0x3fffff9fc8, s2 at 0x3fffff9fc0, pc at 0x3fffff9fd8Could no
+# t fetch register "ustatus"; remote failure reply 'E14'
+
+
+(gdb) frame 0
+#0  dummymain (argc=argc@entry=3, argv=argv@entry=0x3fffff9f88) at kernel/demos.c:38
+=> 0x00000000800062fe <dummymain+0>:    63 56 a0 04     blez    a0,0x8000634a <dummymain+76>
+   0x0000000080006302 <dummymain+4>:    79 71   addi    sp,sp,-48
+   0x0000000080006304 <dummymain+6>:    06 f4   sd      ra,40(sp)
+   0x0000000080006306 <dummymain+8>:    22 f0   sd      s0,32(sp)
+   0x0000000080006308 <dummymain+10>:   26 ec   sd      s1,24(sp)
+   0x000000008000630a <dummymain+12>:   4a e8   sd      s2,16(sp)
+   0x000000008000630c <dummymain+14>:   4e e4   sd      s3,8(sp)
+   0x000000008000630e <dummymain+16>:   52 e0   sd      s4,0(sp)
+   0x0000000080006310 <dummymain+18>:   00 18   addi    s0,sp,48
+   0x0000000080006312 <dummymain+20>:   aa 89   mv      s3,a0
+   0x0000000080006314 <dummymain+22>:   2e 89   mv      s2,a1
+   0x0000000080006316 <dummymain+24>:   81 44   li      s1,0
+   0x0000000080006318 <dummymain+26>:   17 2a 00 00     auipc   s4,0x2
+   0x000000008000631c <dummymain+30>:   13 0a 8a 57     addi    s4,s4,1400 # 0x8000889
+
+
+# argv = 0x3fffff9f88   // pointer to an array of char* (argv[0], argv[1], ...)
+# *argv = 0x800088a8     // argv[0] → points to "foo"
+# So memory layout conceptually looks like:
+# argv --> +0  → 0x800088a8 ──► "foo\0"
+#          +8  → 0x800088b0 ──► "bar\0"
+#          +16 → 0x800088b8 ──► "baz\0"
+
+# argv points to an array of string pointers.
+# argv[0] → "foo"
+# argv[1] → "bar"
+# argv[2] → "baz"
+
+(gdb) i args
+argc = 3
+argv = 0x3fffff9f88
+
+(gdb) p *argv
+$7 = 0x800088a8 "foo"
+
+
+(gdb) p *argv@2
+$8 =   {0x800088a8 "foo",   0x800088b0 "bar"}
+
+
+(gdb) p *argv@argc
+$9 =   {0x800088a8 "foo",   0x800088b0 "bar",   0x800088b8 "baz"}
+
+
+(gdb) p/x argv
+$10 = 0x3fffff9f88
+
+(gdb) x/s argv
+0x3fffff9f88:   "\250\210"
+
+# Dereference directly:
+(gdb) p argv[0][0]
+$11 = 102 'f'
+
+(gdb) p argv[0][1]
+$21 = 111 'o'
+
+(gdb) p argv[0][7]
+$24 = 0 '\000'
+
+(gdb) p argv[0][8]
+$23 = 98 'b'
+
+
+# Using pointer arithmetic (explicit form):
+(gdb) p **argv
+$12 = 102 'f'
+
+(gdb) p *(*(argv) + 1)
+$22 = 111 'o'
+# Explanation:
+# argv points to an array of char*.
+# *argv is the first char*, i.e. the address of "foo".
+# *(argv) + 1 moves one byte forward → points to the second character.
+# Another * dereference gets the character itself.
+
+
+# Memory inspection style:
+(gdb) x/c *argv
+0x800088a8:     102 'f'
+
+(gdb) x/c *argv+1
+0x800088a9:     111 'o'
+
+
+(gdb) x/2c *argv
+0x800088a8:     102 'f' 111 'o'
+
+(gdb) x/c *argv+8
+0x800088b0:     98 'b'
+
+
+
+
+
+
+(gdb) b demo_6
+
+(gdb) i locals
+i = 1
+sum = 0
+
+
+```
+# 5.6 Struct
+
+
+# Reference
+
 ## 主流指令集(Instruction Set Architectures ISA)与对应操作系统
 
 ---
@@ -150,66 +402,6 @@ RISC-V和x86并没有它们第一眼看起来那么相似。RISC-V中的RISC是�
 * 研究芯片/开源软硬件 👉 **RISC-V**
 * 研究操作系统历史或移植 👉 可了解 MIPS, SPARC, PowerPC
 
----
+---c
 
 如果你感兴趣，我还可以做一张 **思维导图 / 对应图表** 来总结各 ISA 和 OS 的对应关系，要不要？
-
-
-# 5.3 gdb和汇编代码执行
-
-# 5.4 RISC-V寄存器
-![image](../images/Table18.2%20RISC-V%20calling%20convention%20register%20usage..png)
-
-## RISC-V calling convention register usage.
-
-| Register | ABI Name | Description                      | Saver  |
-| -------- | -------- | -------------------------------- | ------ |
-| x0       | zero     | Hard-wired zero                  | —      |
-| x1       | ra       | Return address                   | Caller |
-| x2       | sp       | Stack pointer                    | Callee |
-| x3       | gp       | Global pointer                   | —      |
-| x4       | tp       | Thread pointer                   | —      |
-| x5–7     | t0–2     | Temporaries                      | Caller |
-| x8       | s0/fp    | Saved register/frame pointer     | Callee |
-| x9       | s1       | Saved register                   | Callee |
-| x10–11   | a0–1     | Function arguments/return values | Caller |
-| x12–17   | a2–7     | Function arguments               | Caller |
-| x18–27   | s2–11    | Saved registers                  | Callee |
-| x28–31   | t3–6     | Temporaries                      | Caller |
-| f0–7     | ft0–7    | FP temporaries                   | Caller |
-| f8–9     | fs0–1    | FP saved registers               | Callee |
-| f10–11   | fa0–1    | FP arguments/return values       | Caller |
-| f12–17   | fa2–7    | FP arguments                     | Caller |
-| f18–27   | fs2–11   | FP saved registers               | Callee |
-| f28–31   | ft8–11   | FP temporaries                   | Caller |
-
-
-基本上来说，RISC-V中通常的指令是64bit，但是在Compressed Instruction中指令是16bit。在Compressed Instruction中我们使用更少的寄存器，也就是x8 - x15寄存器。
-
-
-通常我们在谈到寄存器的时候，我们会用它们的ABI名字。不仅是因为这样描述更清晰和标准，同时也因为在写汇编代码的时候使用的也是ABI名字
-
-为什么s1寄存器和其他的s寄存器是分开的，因为s1在Compressed Instruction是有效的，而s2-11却不是。除了Compressed Instruction，寄存器都是通过它们的ABI名字来引用
-
-
-当我们调用函数时，你可以看到这里有a0 - a7寄存器。
-a0到a7寄存器是用来作为函数的参数。如果一个函数有超过8个参数，我们就需要用内存了。从这里也可以看出，当可以使用寄存器的时候，我们不会使用内存，我们只在不得不使用内存的场景才使用它。
-
-
-
-
-- Caller Saved寄存器在函数调用的时候不会保存
-- Callee Saved寄存器在函数调用的时候会保存
-- 
-一个Caller Saved寄存器可能被其他函数重写。假设我们在函数a中调用函数b，任何被函数a使用的并且是Caller Saved寄存器，调用函数b可能重写这些寄存器。
-
-Return address寄存器（注，保存的是函数返回的地址），你可以看到ra寄存器是Caller Saved，这一点很重要，它导致了当函数a调用函数b的时侯，b会重写Return address。
-
-
-# 5.5 Stack
-
-
-
-
-
-

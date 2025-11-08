@@ -10,7 +10,68 @@ sh.o
 sh.d
 _sh 
 
-# QEMU
+
+# RISC-V toolchain
+
+xv6 needs a RISC-V cross-compiler toolchain (compiler, assembler, linker, etc.). Different systems might have it installed with different prefixes:
+- riscv64-linux-gnu- (Linux toolchain)
+- riscv64-unknown-elf- (bare-metal toolchain)
+- riscv64-unknown-linux-gnu- (alternative Linux toolchain)
+
+## riscv64-linux-gnu- (Linux toolchain)
+
+```bash
+# Check which toolchain you have:
+# Check for bare-metal toolchain
+which riscv64-unknown-elf-gcc
+
+# Check for Linux toolchain
+which riscv64-linux-gnu-gcc
+
+# Check for alternative Linux toolchain
+which riscv64-unknown-linux-gnu-gcc
+
+# Most Common in WSL Ubuntu:
+# riscv64-linux-gnu- is most common because it's available in Ubuntu's package repository:
+$ sudo apt-get install gcc-riscv64-linux-gnu
+# This installs tools like:
+# riscv64-linux-gnu-gcc
+# riscv64-linux-gnu-ld
+# riscv64-linux-gnu-objdump
+
+# Once TOOLPREFIX is set (e.g., to riscv64-unknown-elf-), the Makefile uses it like:
+CC = $(TOOLPREFIX)gcc        # becomes riscv64-unknown-elf-gcc
+LD = $(TOOLPREFIX)ld         # becomes riscv64-unknown-elf-ld
+OBJDUMP = $(TOOLPREFIX)objdump  # becomes riscv64-unknown-elf-objdump
+
+# Look at the make output, you'll see lines like:
+riscv64-linux-gnu-gcc -c kernel/demo.c
+
+# Disassemble the object file After make
+riscv64-linux-gnu-objdump -d kernel/demos.o > kernel/demos.asm
+
+
+
+```
+## riscv64-unknown-elf- (bare-metal toolchain)
+```bash
+$ sudo apt install gcc-riscv64-unknown-elf
+
+# Disassemble the object file After make
+riscv64-unknown-elf-objdump -S kernel/demos.o > kernel/demos.asm
+
+
+# uninstall riscv64-unknown-elf-gcc
+# Check if it's a package
+dpkg -l | grep riscv
+
+# Uninstall if found from Ubuntu/Debian package
+sudo apt-get remove gcc-riscv64-unknown-elf
+sudo apt-get autoremove
+```
+
+
+# RISC-V Emulation
 
 ## QEMU 介绍
 QEMU 是一个很“全能”的虚拟化工具，严格说它是 开源的仿真器（emulator）和虚拟机（virtualizer）。
@@ -99,9 +160,6 @@ make -nB qemu | vim -
 # 根据需要修改一些配置： 优化等级，CPU 数，编译指令
 
 ```
-
-
-
 
 ## info mem
 qemu has a "monitor" that lets you query the state of the emulated machine. You can get at it by typing control-a c (the "c" is for console). A particularly useful monitor command is info mem to print the page table. You may need to use the cpu command to select which core info mem looks at, or you could start qemu with make CPUS=1 qemu to cause there to be just one core.
@@ -205,13 +263,17 @@ The 0x0 tells GDB where the symbols are located in memory:
 
 ## GDB setting .gdbinit
 
-### 1. Set xv6_labs_main/.gdbinit
-```bash
-cat ~/.gdbinit 
-add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_main/.gdbinit
-source /mnt/e/projects/operating_system/xv6_labs_main/.gbdinit_my
+### 1. GDB Configuration file 
 
-# xv6_labs_main/.gdbinit_my
+```bash
+# "/home/michael/.gdbinit"
+cat ~/.gdbinit 
+add-auto-load-safe-path /mnt/e/projects/operating_system/xv6-labs-2020/.gdbinit
+source /mnt/e/projects/operating_system/xv6-labs-2020/.gdbinit_kernel
+
+
+
+# .gddinit_kernel
 set confirm off
 set architecture riscv:rv64
 symbol-file kernel/kernel
@@ -221,18 +283,32 @@ set disassemble-next-line on
 set print pretty on 
 set print array on 
 
+target remote 127.0.0.1:26000
+
 # Useful gdb settings for C in xv6
 # set disassemble-next-line on     # show asm after each step
 # set print pretty on              # pretty-print structs
 # set print array on               # expand arrays
 # set pagination off
-
-
 ```
+
 
 Nice — let’s go line by line through that `.gdbinit`. It’s basically a startup script for GDB so you don’t have to type everything manually each time.
 
 ---
+
+add-auto-load-safe-path /mnt/e/projects/operating_system/xv6-labs-2020/.gdbinit
+<!-- # Purpose: Tells GDB it's safe to automatically load .gdbinit from this specific directory.
+# What it does:
+# - GDB has security protection against auto-loading .gdbinit files from random directories
+# - This line whitelists that specific path -->
+
+source /mnt/e/projects/operating_system/xv6-labs-2020/.gddinit_kernel
+<!-- # Purpose: Tries to load custom GDB commands from .gddinit_my in the xv6_labs_2021 directory
+# What it does:
+# source command loads and executes GDB commands from a file
+# This is probably a custom configuration you created for a previous project -->
+
 
  1. `set confirm off`
 
@@ -294,32 +370,6 @@ Nice — let’s go line by line through that `.gdbinit`. It’s basically a sta
 6. Allow breakpoints even on compressed RISC-V instructions.
    
 
-### 2. Configuration file "/home/michael/.gdbinit".
-
-
-
-```bash
-# For help, type "help".
-# Type "apropos word" to search for commands related to "word"...
-# --Type <RET> for more, q to quit, c to continue without paging--
-# Reading symbols from kernel/kernel...
-# warning: File "/mnt/e/projects/operating_system/xv6_labs_main/.gdbinit" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
-# To enable execution of this file add
-#         add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_main/.gdbinit
-# line to your configuration file "/home/michael/.gdbinit".
-# To completely disable this security protection add
-#         set auto-load safe-path /
-# line to your configuration file "/home/michael/.gdbinit".
-# For more information about this security protection see the
-# "Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
-#         info "(gdb)Auto-loading safe path"
-
-cd ~/.gdbinit
-cat .gdbinit 
-add-auto-load-safe-path /mnt/e/projects/operating_system/xv6_labs_main/.gdbinit
-
-```
-
 
 
 
@@ -349,8 +399,10 @@ In a separate terminal:
 
 ```bash
 # *** Now run 'gdb' in another window.
-# riscv64-linux-gnu-gdb / riscv64-unknown-elf-gdb
+
+
 gdb-multiarch
+
 # This is just the GNU debugger build that supports multiple architectures (ARM, RISC-V, MIPS, etc.). You need this since xv6 is running on RISC-V, not x86.
 
 # You start GDB without loading any program. You get the (gdb) prompt.

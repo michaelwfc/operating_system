@@ -6,7 +6,7 @@
       "name": "Attach to QEMU (gdb-multiarch)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/xv6_labs_main/kernel/kernel",
+      "program": "${workspaceFolder}/xv6-labs-2020/kernel/kernel",
       "cwd": "${workspaceFolder}",
       "miDebuggerServerAddress": "127.0.0.1:26000",
       "miDebuggerPath": "/usr/bin/gdb-multiarch",
@@ -19,7 +19,7 @@
         },
         {
           "description": "load kernel symbols",
-          "text": "symbol-file ${workspaceFolder}/xv6_labs_main/kernel/kernel",
+          "text": "symbol-file ${workspaceFolder}/xv6-labs-2020/kernel/kernel",
           "ignoreFailures": true
         },
         {

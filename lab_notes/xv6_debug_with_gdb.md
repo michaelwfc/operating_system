@@ -754,7 +754,7 @@ make qemu-gdb
 - 加载 kernel symbols
 - 设置 set breakpoint pending on
 
-1. 在用户源或 kernel 源设置断点，例如：
+5. 在用户源或 kernel 源设置断点，例如：
 
 - 用户侧 write 的 stub（若你知道地址：b *0xdfe）
 - kernel:b main、 b usertrap、b uservec（若 uservec 还未可访问，pending 会生效）

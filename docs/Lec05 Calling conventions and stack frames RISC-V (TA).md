@@ -2,7 +2,13 @@
 # Reference
 
 - https://mit-public-courses-cn-translatio.gitbook.io/mit6-s081/lec05-calling-conventions-and-stack-frames-risc-v
-
+- https://pdos.csail.mit.edu/6.S081/2020/lec/l-riscv.txt
+- RISC-V ISA specification: https://riscv.org/specifications/
+    Contains detailed information
+- RISC-V ISA Reference: https://rv8.io/isa
+    Overview of instructions
+- RISC-V assembly language reference: https://rv8.io/asm
+    Overview of directives, pseudo-instructions, and more
 
 # 5.1 C程序到汇编程序的转换
 ISA（Instruction Set Architecture）
@@ -99,7 +105,10 @@ code  kernel/demos.asm
 
 # 5.5 Stack
 
+![image](../images/Figure%203.4-A%20process’s%20user%20address%20space,%20with%20its%20initial%20stack.png)
 ## Stack Frame
+
+
 下面是一个非常简单的栈的结构图，其中每一个区域都是一个Stack Frame，每执行一次函数调用就会产生一个Stack Frame。
 ![image](../images/stack-frames-01.png)
 
@@ -108,13 +117,14 @@ code  kernel/demos.asm
 对于Stack来说，是从高地址开始向低地址使用。所以栈总是向下增长。当我们想要创建一个新的Stack Frame的时候，总是对当前的Stack Pointer做减法。
 
 一个函数的Stack Frame包含了保存的寄存器，本地变量，并且，如果函数的参数多于8个，额外的参数会出现在Stack中。所以Stack Frame大小并不总是一样，即使在这个图里面看起来是一样大的。不同的函数有不同数量的本地变量，不同的寄存器，所以Stack Frame的大小是不一样的。但是有关Stack Frame有两件事情是确定的：
-- Return address总是会出现在Stack Frame的第一位
-- 指向前一个Stack Frame的指针也会出现在栈中的固定位置
+- Return address(ra) 总是会出现在Stack Frame的第一位
+- 指向前一个Stack Frame的指针(fp)也会出现在栈中的固定位置
 
 
 ### Stack Frame 中有两个重要的寄存器
 - SP（Stack Pointer），它指向Stack的底部并代表了当前Stack Frame的位置。
-- FP（Frame Pointer），它指向当前Stack Frame的顶部。因为Return address和指向前一个Stack Frame的的指针都在当前Stack Frame的固定位置，所以可以通过当前的FP寄存器寻址到这两个数据。
+- FP（Frame Pointer），它指向当前Stack Frame的顶部。
+  因为Return address和指向前一个Stack Frame的的指针都在当前Stack Frame的固定位置，所以可以通过当前的FP寄存器寻址到这两个数据。
 
 我们保存前一个Stack Frame的指针的原因是为了让我们能跳转回去。所以当前函数返回时，我们可以将前一个Frame Pointer存储到FP寄存器中。所以我们使用Frame Pointer来操纵我们的Stack Frames，并确保我们总是指向正确的函数。
 
@@ -405,3 +415,5 @@ sum = 0
 ---c
 
 如果你感兴趣，我还可以做一张 **思维导图 / 对应图表** 来总结各 ISA 和 OS 的对应关系，要不要？
+
+

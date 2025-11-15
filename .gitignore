@@ -1,4 +1,5 @@
-xv6_labs_2021/.clangd/
+xv6_labs_main/.clangd/
+xv6-labs-2020/.clangd/
 bak/
 # Ignore all files without extensions
 code_examples/src/*

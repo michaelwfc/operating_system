@@ -45,25 +45,22 @@ The RISC-V documents contain the full story [1].
 `riscv.h` (kernel/riscv.h:1) contains definitions that xv6 uses. Here’s an outline of the most important registers:
 
 ## Control and Status Registers to handle traps
-###  `stvec` 
-- stvec = Supervisor Trap Vector Base Address Register
+###  `stvec` (Supervisor Trap Vector Base Address Register)
+
 - 指向了内核中处理trap的指令的起始地址
 - The kernel writes the address of its trap handler here; the RISC-V jumps to the address in `stvec` to handle a trap.
 - stvec is a RISC-V control register (CSR) that tells the CPU where to jump when a trap (exception or interrupt) happens while in S-mode (supervisor/kernel mode).
 
-### `sscratch`
-- sscratch = Supervisor Scratch
+### `sscratch` (Supervisor Scratch)
 - The kernel places a value here that comes in handy at the very start of a trap handler.
 
-###  `sepc`
-- sepc = Supervisor Exception Program Counter
-- When a trap occurs, RISC-V saves the program counter here (since the pc is then overwritten with the value in stvec). 
+###  `sepc` (Supervisor Exception Program Counter)
+- When a trap occurs, RISC-V saves the program counter here (since the `pc` is then overwritten with the value in stvec). 
 - The `sret` (return from trap) instruction copies `sepc` to the pc. The kernel can write `sepc` to control where `sret` goes.
 
 ### `scause`
+
 RISC-V puts a number here that describes the reason for the trap.
-
-
 
 ###  `sstatus` 
 - The **SIE bit** in sstatus: Supervisor Interrupt Enable
@@ -71,8 +68,6 @@ RISC-V puts a number here that describes the reason for the trap.
   If the kernel clears SIE, the RISC-V will defer device interrupts until the kernel sets SIE. 
 - The **SPP bit**: Previous mode, 1=Supervisor, 0=User
   indicates whether a trap came from user mode or supervisor mode, and controls to what mode `sret` returns.
-
-
 
 
 ### `satp register`
@@ -162,8 +157,12 @@ The `satp` register in xv6 tells the CPU *which page table root to use*. By writ
 
 ---
 
+## Switch Page Table When traps
 
-#### The Exact lines in xv6 where `satp` is loaded during process switch
+A major constraint on the design of xv6’s trap handling is the fact that the RISC-V hardware does not switch page tables when it forces a trap. This means that the trap handler address in `stvec` must have a valid mapping in the user page table, since that’s the page table in force when the trap handling code starts executing. 
+
+
+### `satp` during process switch
 
 Perfect, let’s walk through xv6-riscv code and find the **exact lines where the `satp` register is written during a process switch**.
 
@@ -187,9 +186,8 @@ That’s the low-level inline assembly that loads the new root page table into t
 
 ##### 2. Switching to a user process (trap return)
 
-The most important place is in **`kernel/trampoline.S` → `userret`**, called from `usertrapret()` in `trap.c`.
-
 `kernel/trap.c`:
+The most important place is in **`kernel/trampoline.S` → `userret`**, called from `usertrapret()` in `kernel/trap.c`.
 
 ```c
 void
@@ -271,33 +269,6 @@ In the **per-process kernel page table lab** you mentioned earlier, you’ll ext
 Do you want me to also trace **where xv6 switches from user page table back to kernel page table** (e.g., on a trap/interrupt)?
 
 
-## Switch Page Table When traps
-
-A major constraint on the design of xv6’s trap handling is the fact that the RISC-V hardware does not switch page tables when it forces a trap. This means that the trap handler address in `stvec` must have a valid mapping in the user page table, since that’s the page table in force when the trap handling code starts executing. 
-
-Furthermore, xv6’s trap handling code needs to switch to the kernel page table; in order to be able to continue executing after that switch, the kernel page table must also have a mapping for the handler pointed to by `stvec`.
-Xv6 satisfies these requirements using a **trampoline page**. 
-
-The trampoline page contains `uservec` (from kernel/trampoline.S uservec 汇编代码), the xv6 trap handling code that `stvec` points to. 
-The trampoline page is mapped in every process’s page table at address `TRAMPOLINE`, which is at the end of the virtual address space so that it will be above memory that programs use for themselves. 
-The trampoline page is also mapped at address TRAMPOLINE in the kernel page table. 
-
-See Figure 2.3 and Figure 3.3. 
-![image](../images/Figure%202.3-Layout%20of%20a%20process’s%20virtual%20address%20space.png)
-![image](../images/Figure%203.3-%20xv6's%20kernel%20address%20space.png)
-
-Because the trampoline page is mapped in the user page table, with the `PTE_U` flag, traps can start executing there in supervisor mode. 
-Because the trampoline page is mapped at the same address in the kernel address space, the trap handler can continue to execute after it switches to the kernel page table.
-
-
-Note that the CPU doesn’t switch to the kernel page table, doesn’t switch to a stack in the kernel, and doesn’t save any registers other than the pc. 
-Kernel software must perform these tasks.
-One reason that the CPU does minimal work during a trap is to provide flexibility to software;
-for example, some operating systems omit a page table switch in some situations to increase trap performance.
-
-
-It’s worth thinking about whether any of the steps listed above could be omitted, perhaps in search of faster traps. Though there are situations in which a simpler sequence can work, many of the steps would be dangerous to omit in general. 
-For example, suppose that the CPU didn’t switch program counters. Then a trap from user space could switch to supervisor mode while still running user instructions. Those user instructions could break user/kernel isolation, 
 
 
 ## Supervisor mode
@@ -324,6 +295,32 @@ When it needs to force a trap, the RISC-V hardware does the following for all tr
 
 # 4.2 Traps from user space
 
+Furthermore, xv6’s trap handling code needs to switch to the kernel page table; 
+in order to be able to continue executing after that switch, the kernel page table must also have a mapping for the handler pointed to by `stvec`.
+Xv6 satisfies these requirements using a **trampoline page**. 
+
+The trampoline page contains `uservec` (from `kernel/trampoline.S` uservec 汇编代码), the xv6 trap handling code that `stvec` points to. 
+- The trampoline page is mapped in every process’s page table at address `TRAMPOLINE`, which is at the end of the virtual address space so that it will be above memory that programs use for themselves. 
+- The trampoline page is also mapped at address TRAMPOLINE in the kernel page table. 
+
+See Figure 2.3 and Figure 3.3. 
+![image](../images/Figure%202.3-Layout%20of%20a%20process’s%20virtual%20address%20space.png)
+![image](../images/Figure%203.3-%20xv6's%20kernel%20address%20space.png)
+
+Because the trampoline page is mapped in the user page table, with the `PTE_U` flag, traps can start executing there in supervisor mode. 
+Because the trampoline page is mapped at the same address in the kernel address space, the trap handler can continue to execute after it switches to the kernel page table.
+
+
+Note that the CPU doesn’t switch to the kernel page table, doesn’t switch to a stack in the kernel, and doesn’t save any registers other than the pc. 
+Kernel software must perform these tasks.
+One reason that the CPU does minimal work during a trap is to provide flexibility to software;
+for example, some operating systems omit a page table switch in some situations to increase trap performance.
+
+
+It’s worth thinking about whether any of the steps listed above could be omitted, perhaps in search of faster traps. Though there are situations in which a simpler sequence can work, many of the steps would be dangerous to omit in general. 
+For example, suppose that the CPU didn’t switch program counters. Then a trap from user space could switch to supervisor mode while still running user instructions. Those user instructions could break user/kernel isolation, 
+
+
 ## 4.2.1 High-level Picture
 ```
 SH: main()
@@ -345,10 +342,10 @@ SH: main()
 ```
 
 
-Xv6 handles traps differently depending on whether it is executing in the kernel or in user code.
+Xv6 handles traps differently depending on whether it is executing in the `kernel` or in `user code`.
 Here is the story for traps from user code; Section 4.5 describes traps from kernel code.
 
-A trap may occur while executing in user space if the user program makes a system call (`ecall` instruction), or does something illegal, or if a device interrupts. 
+A trap may occur while executing in user space if the user program makes a `system call` (`ecall` instruction), or does something illegal, or if a device interrupts. 
 
 The high-level path of a trap from user space is : 
 `uservec` (kernel/trampoline.S:16) -> then `usertrap` (kernel/trap.c:37); 
@@ -403,10 +400,9 @@ The trampoline is the fix
 ### 0. ecall: triger trap when write()
 
 when `ecall` instruction is executed
-ecall 用 system call 的方式觸發 trap， 提高程序的权限，挑战程序的 trampoline
-ecall is an exception instruction that triggers a trap into the kernel
+ecall is an exception instruction that triggers a trap（system call） into the kernel 
 
-In user space, it doesn’t execute normal code. Instead, the CPU switches to privileged mode, saves the current PC, and jumps to the kernel's trap handler.
+In user space, it doesn’t execute normal code. Instead, the CPU switches to privileged mode, saves the current PC to `sepc`, and jumps to the kernel's trap handler by `stvec`.
 
 From GDB’s perspective, the kernel code is not part of your user-space program (kernel/kernel ELF you loaded). It’s in a different memory space, usually not mapped in your debugging session.
 
@@ -614,8 +610,6 @@ $1 = 0x3ffffff000
 (gdb) b *$stvec
 # (gdb) b *0x3ffffff000    # Common xv6 trampoline virtual address
 Breakpoint 2 at 0x3ffffff000
-
-
 
 ```
 
@@ -1823,9 +1817,12 @@ $32 = 0x3fffffbf0b "\200"
 $33 = 0x3fffffbf0b "$"
 ```
 
-### 4. usertrap->usertrapret(kernel/trap.c)
+
+### 4. usertrapret(kernel/trap.c)
+
 The first step in returning to user space is the call to `usertrapret` (kernel/trap.c:90). This function sets up the RISC-V control registers to prepare for a future trap from user space. 
-- This involves changing `stvec` to refer to `uservec`, preparing the trapframe fields that uservec relies on, 
+
+- This involves changing `stvec` to refer to `uservec`, preparing the trapframe fields that uservec relies on
 - setting `sepc` to the previously saved user program counter. 
 - At the end, usertrapret calls `userret` on the trampoline page that is mapped in both user and kernel page tables; 
   the reason is that assembly code in userret will **switch page tables**.

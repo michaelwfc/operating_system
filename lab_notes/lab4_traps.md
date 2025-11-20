@@ -1004,6 +1004,8 @@ Backtrace stopped: previous frame inner to this frame (corrupt stack?)
 
 ##### usertrap()
 ```bash
+b kernel/trap.c:88
+
 # set a breakpoint at trap when timer interrupt
 (gdb)b kernel/trap.c:88
 
@@ -1018,7 +1020,6 @@ Backtrace stopped: previous frame inner to this frame (corrupt stack?)
 ```
 
 ##### yield()
-
 ```c
 // Give up the CPU for one scheduling round.
 void
@@ -1030,14 +1031,16 @@ yield(void)
   sched();
   release(&p->lock);
 }
+```
 
-(gdb) b scheduler
 
+```bash
 (gdb) where
 #0  yield () at kernel/proc.c:568
 #1  0x00000000800028f6 in usertrap () at kernel/trap.c:123
 #2  0x000000000000013e in test0 () at user/alarmtest.c:53
 Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+
 
 ```
 
@@ -1064,16 +1067,46 @@ sched(void)
   swtch(&p->context, &mycpu()->context);
   mycpu()->intena = intena;
 }
+```
 
-
-
-
+```bash
 (gdb) p p->name
 $6 =   "alarmtest\000\000\000\000\000\000"
 
 //  swtch(&p->context, &mycpu()->context); 
 (gdb) b scheduler
 Breakpoint 5 at 0x80001f6e: file kernel/proc.c, line 463.
+
+# set a breakpoint at scheduler
+(gdb) b kernel/proc.c:474
+
+(gdb) c
+Continuing.
+
+Breakpoint 6, scheduler () at kernel/proc.c:474
+=> 0x0000000080001fee <scheduler+128>:  26 85   mv      a0,s1
+   0x0000000080001ff0 <scheduler+130>:  97 f0 ff ff     auipc   ra,0xfffff
+   0x0000000080001ff4 <scheduler+134>:  e7 80 40 c7     jalr    -908(ra) # 0x80000c64 <acquire>
+
+(gdb) delete kernel/proc.c:474
+
+# set a breakpoint at scheduler when state is RUNNABLE
+(gdb) b kernel/proc.c:479
+
+(gdb) c
+Continuing.
+
+Breakpoint 7, scheduler () at kernel/proc.c:479
+=> 0x0000000080001fc0 <scheduler+82>:   23 ac 84 01     sw      s8,24(s1)
+
+(gdb) p p->name
+$6 =   "alarmtest\000\000\000\000\000\000"
+(gdb) where
+#0  scheduler () at kernel/proc.c:479
+#1  0x0000000080000f70 in main () at kernel/main.c:44
+(gdb) p p->name
+$7 =   "alarmtest\000\000\000\000\000\000"
+
 ```
 
 ##### usertrapret()

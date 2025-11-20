@@ -2,7 +2,8 @@
 
 # CS self-study notes
 - https://csdiy.wiki/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/MIT6.S081/#_2
-
+- https://github.com/PKUFlyingPig/cs-self-learning
+- 
 
 # MIT 6.S081: Operating System Engineering
 

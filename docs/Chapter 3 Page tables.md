@@ -650,6 +650,22 @@ We see here a few nice examples of use of page tables.
 
 
 ### Debugging for data structure and kalloc
+
+You can think of the returned pointer like this:
+- It’s a virtual address in the kernel: a kernel virtual address that directly maps to physical memory
+  kernel virtual address = physical address + KERNBASE
+- the pointer returned by kalloc() is not a physical address, But it points to a region that corresponds 1:1 with physical memory.
+- So the kernel can manipulate the page as if it were normal memory.
+- But userspace PTEs must use the true physical address.
+
+
+
+kalloc() returns:
+- A kernel virtual address, usable for memset, copying, freeing, etc.
+- But NOT acceptable to put directly in a user page table.
+- mappages() expects a physical address, not a kernel virtual pointer.
+ you must convert it to a physical address before passing it into mappages()
+
 ```c
 void *
 kalloc(void)

@@ -133,8 +133,8 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf)
 {
-  // fprintf(2, "$ ");
-  write(2, "$ ", 2); // use the code as vedio course 2020
+  fprintf(2, "$ ");
+  // write(2, "$ ", 2); // use the code as vedio course 2020
 
   memset(buf, 0, nbuf);
   // to read from stdin(file descriptor 0), which blocks and waits for user input.

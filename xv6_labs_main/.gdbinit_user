@@ -8,5 +8,8 @@ set riscv use-compressed-breakpoints yes
 set disassemble-next-line on
 set print pretty on 
 set print array on
+
+target remote 127.0.0.1:26000
+
 b getcmd
 c

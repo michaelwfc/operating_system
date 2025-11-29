@@ -1,5 +1,7 @@
 Virtual memory provides a level of **indirection**:
-the kernel can intercept memory references by marking PTEs invalid or read-only, leading to page faults, and can change what addresses mean by modifying PTEs. There is a saying in computer systems that any systems problem can be solved with a level of indirection. The lazy allocation lab provided one example. This lab explores another example: copy-on write fork.
+the kernel can intercept memory references by marking `PTEs` invalid or read-only, leading to page faults, and can change what addresses mean by modifying PTEs. 
+There is a saying in computer systems that any systems problem can be solved with **a level of indirection**. 
+The lazy allocation lab provided one example. This lab explores another example: **copy-on write fork**.
 
 To start the lab, switch to the cow branch:
 ```bash
@@ -11,15 +13,20 @@ $ make clean
 
 # The problem
 
-The fork() system call in xv6 copies all of the parent process's user-space memory into the child. If the parent is large, copying can take a long time. Worse, the work is often largely wasted; for example, a fork() followed by exec() in the child will cause the child to discard the copied memory, probably without ever using most of it. On the other hand, if both parent and child use a page, and one or both writes it, a copy is truly needed.
+The fork() system call in xv6 copies all of the parent process's user-space memory into the child. 
+If the parent is large, copying can take a long time. Worse, the work is often largely wasted; for example, a fork() followed by exec() in the child will cause the child to discard the copied memory, probably without ever using most of it. 
+On the other hand, if both parent and child use a page, and one or both writes it, a copy is truly needed.
 
 
 # The solution
 
 The goal of copy-on-write (COW) fork() is to defer allocating and copying physical memory pages for the child until the copies are actually needed, if ever.
-COW fork() creates just a pagetable for the child, with PTEs for user memory pointing to the parent's physical pages. COW fork() marks all the user PTEs in both parent and child as not writable. When either process tries to write one of these COW pages, the CPU will force a page fault. The kernel page-fault handler detects this case, allocates a page of physical memory for the faulting process, copies the original page into the new page, and modifies the relevant PTE in the faulting process to refer to the new page, this time with the PTE marked writeable. When the page fault handler returns, the user process will be able to write its copy of the page.
+COW fork() creates just a pagetable for the child, with PTEs for user memory pointing to the parent's physical pages. COW fork() marks all the user PTEs in both parent and child as **not writable**. 
 
-COW fork() makes freeing of the physical pages that implement user memory a little trickier. A given physical page may be referred to by multiple processes' page tables, and should be freed only when the last reference disappears.
+When either process tries to write one of these COW pages, the CPU will force a page fault. The kernel page-fault handler detects this case, allocates a page of physical memory for the faulting process, copies the original page into the new page, and modifies the relevant PTE in the faulting process to refer to the new page, this time with the PTE marked **writeable**. When the page fault handler returns, the user process will be able to write its copy of the page.
+
+COW fork() makes freeing of the physical pages that implement user memory a little trickier. 
+A given physical page may be referred to by multiple processes' page tables, and should be freed only when the last reference disappears.
 
 
 # Implement copy-on write(hard)
@@ -60,13 +67,14 @@ Here's a reasonable plan of attack.
 
 1. Modify `uvmcopy()` to map the parent's physical pages into the child, instead of allocating new pages. Clear `PTE_W` in the PTEs of both child and parent.
 
-2. Modify `usertrap() `to recognize page faults. When a page-fault occurs on a COW page, allocate a new page with `kalloc()`, copy the old page to the new page, and install the new page in the PTE with `PTE_W` set.
+2. Modify `usertrap()` to recognize page faults. When a page-fault occurs on a COW page, allocate a new page with `kalloc()`, copy the old page to the new page, and install the new page in the PTE with `PTE_W` set.
 
 3. Ensure that each physical page is freed when the last PTE reference to it goes away -- but not before. A good way to do this is to keep, for each physical page, a **"reference count"** of the number of user page tables that refer to that page. 
-   - Set a page's reference count to one when kalloc() allocates it. 
+   - Set a page's reference count to one when `kalloc()` allocates it. 
    - Increment a page's reference count when fork causes a child to share the page, 
    - and decrement a page's count each time any process drops the page from its page table. 
-  kfree() should only place a page back on the free list if its reference count is zero. It's OK to to keep these counts in a fixed-size array of integers. You'll have to work out a scheme for how to index the array and how to choose its size. For example, you could index the array with the page's physical address divided by 4096, and give the array a number of elements equal to highest physical address of any page placed on the free list by kinit() in kalloc.c.
+   - `kfree()` should only place a page back on the free list if its reference count is zero. 
+  It's OK to to keep these counts in a fixed-size array of integers. You'll have to work out a scheme for how to index the array and how to choose its size. For example, you could index the array with the page's physical address divided by 4096, and give the array a number of elements equal to highest physical address of any page placed on the free list by `kinit()` in kalloc.c.
 
 4. Modify `copyout()` to use the same scheme as page faults when it encounters a COW page.
 
@@ -77,3 +85,287 @@ Here's a reasonable plan of attack.
 - `usertests` explores scenarios that `cowtest` does not test, so don't forget to check that all tests pass for both.
 - Some helpful macros and definitions for page table flags are at the end of kernel/riscv.h.
 - If a COW page fault occurs and there's no free memory, the process should be killed.
+
+# Debug
+## Debug 1
+```bash
+xv6 kernel is booting 
+hart 2 starting 
+hart 1 starting 
+init: starting sh 
+$ cowtest simple: ok 
+simple: ok 
+three: scause 0x000000000000000d sepc=0x0000000080000f0c stval=0x000000000000270f 
+panic: kerneltrap
+
+
+```
+
+### kinit
+```bash
+b kinit
+# void
+# freerange(void *pa_start, void *pa_end)
+# {
+#   char *p;
+#   p = (char*)PGROUNDUP((uint64)pa_start);
+#   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+#     kfree(p);
+# }
+
+(gdb) p/x pa_start
+$12 = 0x80686000
+
+# end is defined as a variable/symbol (like extern char end[];)
+# Printing end gives its address/value
+(gdb) p/x pa_end
+$7 = 0x88000000
+
+(gdb) set $KERNBASE=0x80000000L
+(gdb) p/x $KERNBASE
+$9 = 0x80000000
+(gdb) p/x $KERNBASE +  128*1024*1024
+$10 = 0x88000000
+
+# Check symbol table
+# Address 0x80000000 contains the _entry code
+(gdb) info symbol 0x80000000
+_entry in section .text
+
+# _entry is code, shows instruction
+# This is the INSTRUCTION at _entry, not the address!
+
+
+(gdb) p/x _entry
+$13 = 0x17 
+# _entry is a function/code label, and when you print it directly, GDB shows the first instruction at that location, not the address.
+# Printing _entry tries to dereference it (reads the instruction bytes)
+# Need &_entry to get its address
+
+# Always use & when getting the address of functions or labels:
+(gdb) p/x &_entry
+$14 = 0x80000000
+
+# Use info address to get the address of a symbol
+(gdb) info address _entry
+Symbol "_entry" is at 0x80000000 in a file compiled without debugging.
+
+(gdb) x/10i $KERNBASE
+   0x80000000 <_entry>: auipc   sp,0x9
+   0x80000004 <_entry+4>:       ld      sp,-1136(sp)
+   0x80000008 <_entry+8>:       lui     a0,0x1
+   0x8000000a <_entry+10>:      csrr    a1,mhartid
+   0x8000000e <_entry+14>:      addi    a1,a1,1
+   0x80000010 <_entry+16>:      mul     a0,a0,a1
+   0x80000014 <_entry+20>:      add     sp,sp,a0
+   0x80000016 <_entry+22>:      jal     ra,0x80000086 <start>
+   0x8000001a <spin>:   j       0x8000001a <spin>
+   0x8000001c <timerinit>:      addi    sp,sp,-16
+
+(gdb) where
+#0  kfree_inner (pa=pa@entry=0x80686000) at kernel/kalloc.c:113
+#1  0x0000000080000e1a in page_ref_dec_debug (pa=pa@entry=2154323968,
+    why=why@entry=0x80008008 <__FUNCTION__.1535> "kfree") at kernel/kalloc.c:165
+#2  0x0000000080000e60 in kfree (pa=pa@entry=0x80686000) at kernel/kalloc.c:214
+#3  0x0000000080000e9c in freerange (pa_start=<optimized out>, pa_end=pa_end@entry=0x88000000)
+    at kernel/kalloc.c:203
+#4  0x0000000080000efe in kinit () at kernel/kalloc.c:194
+#5  0x0000000080001366 in main () at kernel/main.c:19
+
+# r points to first free page
+(gdb) p/x r
+$3 = 0x80686000
+# Garbage! (0x01 bytes from memset)
+(gdb) p/x r->next
+$4 = 0x101010101010101
+# Why 0x101010101010101?
+# memset(pa, 1, PGSIZE) fills the entire page with byte 0x01
+# r->next is a pointer (8 bytes on 64-bit RISC-V)
+# Reading 8 bytes of 0x01: 0x01 01 01 01 01 01 01 01 = 0x0101010101010101
+
+
+# freelist is empty (NULL)
+(gdb) p kmem.freelist 
+$5 = (struct run *) 0x0
+
+
+(gdb) p kmem.freelist.next
+$6 = (struct run *) 0x0
+
+# r->next = kmem.freelist;   // r->next = NULL (freelist is empty)
+(gdb) p/x r->next
+$7 = 0x0
+
+# kmem.freelist = r;         // freelist now points to r
+(gdb) p/x kmem.freelist
+$9 = 0x80686000
+(gdb) p kmem.freelist
+$10 = (struct run *) 0x80686000
+
+## After First Call - State:
+kmem.freelist --> [0x80686000]
+                      |
+                      next = NULL
+
+
+Second Call: kfree_inner(0x80687000)
+After second call:
+kmem.freelist --> [0x80687000] --> [0x80686000] --> NULL
+## The Pattern:
+Each new page is added to the **front** of the linked list:
+After 1st free:  freelist → [page1] → NULL
+After 2nd free:  freelist → [page2] → [page1] → NULL
+After 3rd free:  freelist → [page3] → [page2] → [page1] → NULL
+
+```
+
+
+```
+Memory Layout in xv6:
+Physical Memory Layout:
+
+0x80000000  KERNBASE
+    |
+    |---- Kernel code (.text)
+    |---- Kernel data (.data, .bss)
+    |---- End of kernel binary
+    |
+0x80686000  <-- pa_start (end)
+    |
+    |---- FREE MEMORY (heap for kalloc)
+    |---- This is what gets added to free list
+    |
+0x88000000  <-- pa_end (PHYSTOP)
+
+Why start at 0x80686000?
+
+The symbol end marks the end of the kernel's binary. Everything from KERNBASE to end contains:
+
+Kernel code (instructions)
+Initialized data (.data section)
+Uninitialized data (.bss section)
+Kernel stack
+
+
+Summary:
+
+0x80000000 to 0x80686000: Kernel binary (code + data) - CANNOT BE FREED
+0x80686000 to 0x88000000: Free memory (about 122 MB) - CAN BE ALLOCATED
+
+If xv6 started freeing from KERNBASE (0x80000000), it would overwrite the running kernel code, causing an immediate crash!
+
+```
+
+## kvminit
+```bash
+b kvminit
+(gdb) where
+#0  kvminit () at kernel/vm.c:26
+#1  0x0000000080001350 in main () at kernel/main.c:20
+(gdb) p/x kernel_pagetable
+$3 = 0x87fff000
+```
+
+## Debug 2
+```bash
+xv6 kernel is booting
+kvminit kernel_pagetable: 0x0000000087fff000
+hart 1 starting
+hart 2 starting
+DEC pa=0x0x0000000087f72000 idx=32626 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f70000 idx=32624 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f71000 idx=32625 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f73000 idx=32627 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f74000 idx=32628 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f75000 idx=32629 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f6f000 idx=32623 -> ref=0 (kfree)
+init: starting sh
+DEC pa=0x0x0000000087f6b000 idx=32619 -> ref=1 (kfree)
+DEC pa=0x0x0000000087f68000 idx=32616 -> ref=1 (kfree)
+DEC pa=0x0x0000000087f67000 idx=32615 -> ref=1 (kfree)
+DEC pa=0x0x0000000087f70000 idx=32624 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f71000 idx=32625 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f73000 idx=32627 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f74000 idx=32628 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f75000 idx=32629 -> ref=0 (kfree)
+DEC pa=0x0x0000000087f72000 idx=32626 -> ref=0 (kfree)
+$ cowtest
+COW page-fault handler: copy contents from old page to new page, mem=0x0000000087f5d000,pa=0x0000000087f5e000
+DEC pa=0x0x0000000087f5e000 idx=32606 -> ref=1 (usertrap)
+scause 0x000000000000000c
+sepc=0x0000000000000b42 stval=0x0000000000000b42
+panic: kerneltrap
+
+hwo to trace the bug in cow lab
+```
+
+
+### usertrap
+```bash
+xv6 kernel is booting
+
+kvminit kernel_pagetable: 0x0000000087fff000
+hart 1 starting
+hart 2 starting
+init: starting sh
+$ cowtest
+
+b usertrap
+```
+
+## Debug 3
+
+```bash
+$ make clean && make CPUS=1 qemu
+
+xv6 kernel is booting
+
+kvminit kernel_pagetable: 0x0000000087fff000
+hart 1 starting
+hart 2 starting
+init: starting sh
+$ cowtest
+simple: ok
+simple: ok
+three: ok
+three: ok
+three: ok
+file: eererrorror::rr ror r: eeaard df aeifaaleidd
+le fdai
+led
+$
+
+```
+
+This shows concurrent output corruption - multiple processes are writing to the console at the same time, causing garbled output like "eererrorror::rr ror". This is a race condition in your COW implementation.
+The Problem:
+The file test in cowtest creates multiple processes that access shared file descriptors. Your COW implementation has a race condition in the reference counting of physical pages.
+Debugging Steps:
+Step 1: Run with single CPU to isolate the issue
+bash# Edit Makefile, find CPUS line and change to:
+CPUS := 1
+Or run with:
+make CPUS=1 qemu
+If it works with 1 CPU but fails with multiple CPUs, it's definitely a race condition.
+
+
+```bash
+xv6 kernel is booting
+
+kvminit kernel_pagetable: 0x0000000087fff000
+init: starting sh
+$ cowtest
+simple: ok
+simple: ok
+three: ok
+three: ok
+three: ok
+file: error: read failed
+error: read failed
+error: read failed
+```
+
+
+Good! With CPUS=1 the garbled output is gone, confirming it's a race condition. Now we see the actual error: "read failed".
+This means the file test can't read from the file correctly after fork. The bug is likely in how you handle shared file descriptors and COW pages during reads.
+

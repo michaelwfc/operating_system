@@ -1,81 +1,78 @@
-
-
 # OS instruction
 
 ## The job of an operating system
 
 The job of an operating system is to share a computer among multiple programs and to provide a more useful set of services than the hardware alone supports.
+
 - An operating system **manages and abstracts the low-level hardware**
-- An operating system **shares the hardware** among multiple programs so that they run (or appear to run) at the same time. Finally, 
+- An operating system **shares the hardware** among multiple programs so that they run (or appear to run) at the same time. Finally,
 - operating systems provide **controlled ways for programs to interact**, so that they can share data or work together.
 
 ## Operating system interfaces
 
-An operating system provides services to user programs through an interface. 
+An operating system provides services to user programs through an interface.
 
 The collection of system calls that a kernel provides is the interface that user programs see.
 
-
 ### Unix operating system
- Ken Thompson and Dennis Ritchie’s Unix operating system
-- Unix provides a **narrow interface** whose mechanisms combine well, offering a surprising degree of generality. 
+
+Ken Thompson and Dennis Ritchie’s Unix operating system
+
+- Unix provides a **narrow interface** whose mechanisms combine well, offering a surprising degree of generality.
 - This interface has been so successful that modern operating systems—BSD, Linux, macOS, Solaris, and even, to a lesser extent, Microsoft Windows—have Unix-like interfaces.
 
-
 ### Kernel Space - System Call - User Space
+
 ![image](../images/Figure%201.1-A%20kernel%20and%20two%20user%20processes.png)
 
 Kernel: a special program that provides services to running programs.
 
 Process: Each running program, called a process, has memory containing instructions, data, and a stack.
-  - The instructions implement the program’s computation. 
-  - The data are the variables on which the computation acts. 
-  - The stack organizes the program’s procedure calls.
+
+- The instructions implement the program’s computation.
+- The data are the variables on which the computation acts.
+- The stack organizes the program’s procedure calls.
 
 System Call: When a process needs to invoke **a kernel service**, it invokes a system call, one of the calls in the operating system’s interface.
 
-  - The system call enters the kernel; the kernel performs the service and returns. Thus a process alternates between executing in user space and kernel space.
+- The system call enters the kernel; the kernel performs the service and returns. Thus a process alternates between executing in user space and kernel space.
 
-  - The kernel uses the **hardware protection mechanisms** provided by a CPU to ensure that each process executing in **user space** can access only its own memory.
+- The kernel uses the **hardware protection mechanisms** provided by a CPU to ensure that each process executing in **user space** can access only its own memory.
 
-  - The kernel executes with the hardware privileges required to implement these protections; user programs execute without those privileges. When a user program invokes a system call, the hardware raises the privilege level and starts executing a pre-arranged function in the kernel.
-
-
-
+- The kernel executes with the hardware privileges required to implement these protections; user programs execute without those privileges. When a user program invokes a system call, the hardware raises the privilege level and starts executing a pre-arranged function in the kernel.
 
 # 1.1 Processes and memory
 
 ## Process:
 
-Each running program, called a process, has memory containing instructions, data, and a stack. 
+Each running program, called a process, has memory containing instructions, data, and a stack.
 
-- The instructions implement the program’s computation. 
-- The data are the variables on which the computation acts. 
+- The instructions implement the program’s computation.
+- The data are the variables on which the computation acts.
 - The stack organizes the program’s procedure calls.
-A given computer typically has many processes but only a single kernel.
+  A given computer typically has many processes but only a single kernel.
 
 An xv6 process consists of user-space memory (instructions, data, and stack) and per-process
 state private to the kernel.
 
-
 ### fork
 
-A process may create a new process using the fork system call. 
+A process may create a new process using the fork system call.
 
-- Fork gives the new process exactly the same memory contents (**both instructions and data**) as the calling process. 
+- Fork gives the new process exactly the same memory contents (**both instructions and data**) as the calling process.
 - Fork returns in **both the original and new processes**.
-- In the original process, fork returns the new process’s PID. 
-- In the new process, fork returns zero. 
+- In the original process, fork returns the new process’s PID.
+- In the new process, fork returns zero.
 - The original and new processes are often called the parent and child.
 
 ```C
 /**
-* The wait system call returns the PID of an exited (or killed) child of the current process and copies the exit status of the child to the address passed to wait; 
- - if none of the caller’s children has exited, wait waits for one to do so. 
+* The wait system call returns the PID of an exited (or killed) child of the current process and copies the exit status of the child to the address passed to wait;
+ - if none of the caller’s children has exited, wait waits for one to do so.
  - If the caller has no children, wait immediately returns -1.
  - If the parent doesn’t care about the exit status of a child, it can pass a 0 address to wait.
 
-* The exit system call causes the calling process to stop executing and to release resources such as memory and open files. 
+* The exit system call causes the calling process to stop executing and to release resources such as memory and open files.
 * Exit takes an integer status argument, conventionally 0 to indicate success and 1 to indicate failure.
 */
 
@@ -95,16 +92,16 @@ if(pid>0){
 
 ### exec
 
-- The exec system call replaces the calling process’s memory with **a new memory image** loaded from a file stored in the file system. 
-    The file must have a particular format, which specifies
-    - which part of the file holds instructions
-    - which part is data
-    - at which instruction to start
-    - etc
+- The exec system call replaces the calling process’s memory with **a new memory image** loaded from a file stored in the file system.
+  The file must have a particular format, which specifies
 
-- When exec succeeds, it does not return to the calling program; 
+  - which part of the file holds instructions
+  - which part is data
+  - at which instruction to start
+  - etc
+
+- When exec succeeds, it does not return to the calling program;
 - instead, the instructions loaded from the file start executing at the entry point declared in **the ELF header**.
-
 
 ```C
 /**
@@ -118,35 +115,37 @@ exec("/bin/echo", argv);
 prtintf("exec failed\n");
 ```
 
-
 # 1.2 I/O and File descriptors
 
 ## File descriptors
+
 A file descriptor is a small integer representing **a kernel-managed object** that a process may read from or write to.
 
-Internally, the xv6 kernel uses the file descriptor as **an index into a per-process table**, so that every process has a private space of file descriptors starting at zero. 
+Internally, the xv6 kernel uses the file descriptor as **an index into a per-process table**, so that every process has a private space of file descriptors starting at zero.
 
-By convention, a process reads from 
-- file descriptor 0 (standard input)- 
+By convention, a process reads from
+
+- file descriptor 0 (standard input)-
 - writes output to file descriptor 1 (standard output)
 - and writes error messages to file descriptor 2 (standard error)
 
 ## read, write, open, close system calls
 
-- int open(char *file, int flags) Open a file; flags indicate read/write; returns an fd (file descriptor).
-- int write(int fd, char *buf, int n) Write n bytes from buf to file descriptor fd; returns n.
-- int read(int fd, char *buf, int n) Read n bytes into buf; returns number read; or 0 if end of file.
+- int open(char \*file, int flags) Open a file; flags indicate read/write; returns an fd (file descriptor).
+- int write(int fd, char \*buf, int n) Write n bytes from buf to file descriptor fd; returns n.
+- int read(int fd, char \*buf, int n) Read n bytes into buf; returns number read; or 0 if end of file.
 - int close(int fd) Release open file fd.
 
+The read and write system calls read bytes from and write bytes to open files named by file descriptors.
 
-The read and write system calls read bytes from and write bytes to open files named by file descriptors. 
+### read(fd, buf, n)
 
-###  read(fd, buf, n)
-The call read(fd, buf, n) reads at most n bytes from the file descriptor fd, copies them into buf, and returns the number of bytes read. Each file escriptor that refers to a file has an offset associated with it. 
-Read reads data from the current file offset and then advances that offset by the number of bytes read: a subsequent read will return the bytes following the ones returned by the first read. 
+The call read(fd, buf, n) reads at most n bytes from the file descriptor fd, copies them into buf, and returns the number of bytes read. Each file escriptor that refers to a file has an offset associated with it.
+Read reads data from the current file offset and then advances that offset by the number of bytes read: a subsequent read will return the bytes following the ones returned by the first read.
 When there are no more bytes to read, read returns zero to indicate the end of the file.
 
 ### write(fd, buf, n)
+
 The call write(fd, buf, n) writes n bytes from buf to the file descriptor fd and returns the number of bytes written. Fewer than n bytes are written only when an error occurs. Like read,write writes data at the current file offset and then advances that offset by the number of bytes
 written: each write picks up where the previous one left off.
 
@@ -185,13 +184,11 @@ int main(void)
 
 ```
 
-
 ### close
+
 The close system call releases a file descriptor, making it free for reuse by a future open, pipe, or dup system call (see below). A newly allocated file descriptor is always the lowest numbered unused descriptor of the current process.
 
-
 File descriptors and fork interact to make I/O redirection easy to implement. Fork copies the parent’s file descriptor table along with its memory, so that the child starts with exactly the same open files as the parent. The system call exec replaces the calling process’s memory but preserves its file table. This behavior allows the shell to implement I/O redirection by forking, reopening chosen file descriptors in the child, and then calling exec to run the new program.
-
 
 ### dup
 
@@ -199,9 +196,208 @@ The dup system call duplicates an existing file descriptor, returning a new one 
 
 # 1.3 Pipes
 
-A pipe is a small kernel buffer exposed to processes as a pair of file descriptors, one for reading
-and one for writing. Writing data to one end of the pipe makes that data available for reading from
-the other end of the pipe. Pipes provide a way for processes to communicate.
+A pipe is a small kernel buffer exposed to processes as **a pair of file descriptors**
+Two file descriptors, pointing to the two ends of this special kernel-managed buffer.
+
+- one for reading
+- one for writing.
+
+Writing data to one end of the pipe makes that data available for reading from the other end of the pipe. Pipes provide a way for processes to communicate.
+
+## What is a pipe?
+
+### A pipe is FIFO
+
+FIFO = First In, First Out.
+Bytes come out in the exact order they go in.
+
+No shuffling. No reordering. No magic.
+It’s a byte conveyor belt.
+
+### Pipes are unidirectional
+
+Data flows one way only:
+```
+write end  --->  kernel buffer  --->  read end
+```
+If you want bidirectional chat between two processes, you need two pipes.
+
+### Pipes shine when used with fork()
+
+#### Example 1
+This is the magic behind shell pipelines like:
+```bash
+ls | grep txt
+```
+
+The shell:
+- creates a pipe
+- fork()s twice
+- gives the write end to ls
+- gives the read end to grep
+
+And suddenly ls and grep are talking over that tiny hidden mailbox.
+
+
+#### Example 2
+
+```bash
+cat file | wc -l
+```
+What actually happens:
+- cat writes file contents into the pipe
+- the kernel buffers a small amount (e.g. ~4KB)
+- wc reads from the other end
+- if wc reads slowly, cat pauses
+- if cat finishes, wc eventually reads EOF
+
+The pipe coordinates the whole dance.
+
+
+#### Example 3
+
+The following example code runs the program `wc` with standard input connected to the read end of a pipe.
+
+```c
+int p[2];
+char *argv[2];
+
+argv[0] = "wc";
+argv[1] = 0;
+
+// This fills p with:
+// p[0] → read end of the pipe
+// p[1] → write end of the pipe
+// These are just two file descriptors.
+// At this moment, the current process holds both ends.
+pipe(p); 
+
+
+if(fork() == 0) {
+// After fork, both parent and child have:
+// file descriptor 0 (stdin)
+// file descriptor 1 (stdout)
+// file descriptor 2 (stderr)
+// file descriptor p[0] (pipe read end)
+// file descriptor p[1] (pipe write end)
+// A perfect mirror of the parent’s file descriptor table.
+// This duplication is what allows pipe-based communication.
+
+  close(0);    //The child closes stdin, freeing file descriptor 0.
+  dup(p[0]);  
+  // dup(fd) returns the lowest available file descriptor. 
+  // FD 0 was just freed, so dup(p[0]) returns 0.
+  // Meaning:
+  // Now fd 0 refers to the pipe’s read end.
+  // stdin is now reading from the pipe.
+
+  // This is the magic move.
+  // This is how the shell wires a pipeline.
+  
+  close(p[0]);  // child doesn’t need the extra copy
+  close(p[1]);  // child shouldn't write into the pipe
+  exec("/bin/wc", argv);
+  //Because stdin now points to the pipe, when wc calls read(0, ...), it actually reads: 
+  // hello world\n
+  // which the parent is about to write.
+  // after send EOF to child from parent, wc receives the characters, counts them, prints the result, and exits.
+
+} else {
+  close(p[0]);     
+  // parent won’t read from pipe
+  // Why close p[0] first?
+  // Parent doesn’t need the read end—closing it avoids confusion.
+  write(p[1], "hello world\n", 12);
+  close(p[1]);     // then closes the write end, send EOF to child
+}
+```
+
+wc will print something like:
+```bash
+1 2 12
+# Meaning:
+# 1 line
+# 2 words
+# 12 bytes
+```
+
+This little program is a classic Unix trick: 
+it feeds data into a child process via a `pipe` by wiring the child’s standard input to the pipe’s read end.
+
+
+- Create a pipe:
+  The program calls `pipe`, which creates a new pipe and records the read and write file descriptors in the array `p`. 
+- Fork a child:
+  After fork, both parent and child have file descriptors referring to the `pipe`. 
+- In the child: redirect its `stdin` to the pipe’s read end, then `exec wc`.
+  The child calls `close` and `dup` to make file descriptor zero refer to **the read end of the pipe**, closes the
+file descriptors in p, and calls `exec` to run `wc`. When `wc` reads from its standard input, it reads from the pipe. 
+- In the parent: `write "hello world\n"` into the pipe.
+  The parent closes the read side of the pipe, writes to the pipe, and then closes the write side.
+- As a result: wc counts the line(s) in the string written by the parent.
+
+It’s a tiny demonstration of how shells implement:
+```bash
+$ echo hello world | wc
+```
+
+### Why is this example important?
+
+Because this is the core mechanism that makes `Unix pipelines` work.
+Every cmd1 | cmd2 you’ve ever used is built on these same steps:
+1. create pipe
+2. fork
+3. in child: redirect stdin/stdout to part of the pipe
+4. exec the program
+
+It’s small, elegant, and the backbone of shell programming.
+
+
+If no data is available, a read on a pipe waits for either data to be written or for all file descriptors
+referring to the write end to be closed; in the latter case, read will return 0, just as if the end of
+a data file had been reached. The fact that read blocks until it is impossible for new data to arrive
+is one reason that it’s important for the child to close the write end of the pipe before executing
+`wc` above: if one of wc ’s file descriptors referred to the write end of the pipe, wc would never see
+end-of-file.
+
+
+## pipelines
+
+
+The xv6 shell implements pipelines such as `grep` `fork` `sh.c` `|` `wc -l` in a manner similar to the above code (user/sh.c:100). 
+- The child process creates a pipe to connect the left end of the pipeline with the right end. 
+- Then it calls `fork` and `runcmd` for the left end of the pipeline and `fork` and `runcmd` for the right end, and waits for both to finish. 
+- The right end of the pipeline may be a command that itself includes a pipe (e.g., a | b | c), which itself forks two new child processes (one for b and one for c). Thus, the shell may create a tree of processes. The leaves of this tree are commands and the interior nodes are processes that wait until the left and right children complete.
+
+In principle, one could have the interior nodes run the left end of a pipeline, but doing so
+correctly would complicate the implementation. Consider making just the following modification:
+change sh.c to not fork for p->left and run runcmd(p->left) in the interior process. 
+Then, for example,` echo hi | wc` won’t produce output, because when `echo hi` exits in runcmd,
+the interior process exits and never calls fork to run the right end of the pipe. This incorrect behavior
+could be fixed by not calling exit in runcmd for interior processes, but this fix complicates
+the code: now runcmd needs to know if it’s in an interior process or not. Complications
+also arise when not forking for runcmd(p->right). For example, with just that modification,
+`sleep 10 | echo` hi will immediately print “hi’ and a new prompt, instead of after 10 seconds;
+this happens because echo runs immediately and exits, not waiting for sleep to finish.
+Since the goal of the sh.c is to be as simple as possible, it doesn’t try to avoid creating interior processes.
+
+Pipes may seem no more powerful than temporary files: the pipeline
+`echo hello world | wc`
+could be implemented without pipes as
+`echo hello world >/tmp/xyz; wc </tmp/xyz`
+
+## Advantages of pipes
+Pipes have at least four advantages over temporary files in this situation.
+- First, pipes automatically clean themselves up; with the file redirection, a shell would have to be careful to remove /tmp/xyz when done. 
+- Second, pipes can pass arbitrarily long streams of data, while file redirection requires
+enough free space on disk to store all the data. 
+- Third, pipes allow for parallel execution of pipeline stages, while the file approach requires the first program to finish before the second starts. 
+- Fourth, if you are implementing inter-process communication, pipes’ blocking reads and writes are more
+efficient than the non-blocking semantics of files.
+
+
+
+
 
 # 1.4 File system
 
@@ -229,21 +425,22 @@ struct stat {
 ```
 
 ### 1. data files
--  A file’s name is distinct from the file itself; 
--  inode: the same underlying file, called an inode
--  links: the same underlying file can have multiple names, called links. 
--  Each link consists of an entry in a directory; the entry contains a file name and a reference to an inode. 
--  An inode holds metadata about a file, including its type (file or  directory or device), its length, the location of the file’s content on disk, and the number of links to  a file.
 
+- A file’s name is distinct from the file itself;
+- inode: the same underlying file, called an inode
+- links: the same underlying file can have multiple names, called links.
+- Each link consists of an entry in a directory; the entry contains a file name and a reference to an inode.
+- An inode holds metadata about a file, including its type (file or directory or device), its length, the location of the file’s content on disk, and the number of links to a file.
 
 ### 2. device
-mknod creates a special file that refers to a device. 
-Associated with a device file are the major and minor device numbers (the two arguments to mknod), which uniquely identify a kernel device.
 
+mknod creates a special file that refers to a device.
+Associated with a device file are the major and minor device numbers (the two arguments to mknod), which uniquely identify a kernel device.
 
 ### 3. directory
 
 A directory is just a file containing an array of struct dirent:
+
 - name is just the bare filename (e.g., "etc", "README", "file1").
 - No \0 terminator if the name exactly fills 14 chars.
 - Absolutely no / stored in the entry — / is only used when userspace code constructs a path string.
@@ -259,24 +456,26 @@ struct dirent {
 ```
 
 If name is shorter than 14 chars:
+
 - xv6 pads the remaining bytes with \0 (null characters) when writing it.
 - This makes it fixed-size (easier for disk read/write).
-
 
 #### Example:
 
 If you ls /:
+
 - Path / (root) contains entries: ".", "..", "README", "bin", etc.
 - None of these stored as "bin/" on disk — "bin/" is just a printing convention in ls to show it's a directory.
 
 ## System Calls
 
 ### open & mknod
+
 ```C
 // mkdir creates a new directory
 mkdir("/dir");
 
-// open with the O_CREATE flag creates a new data file, 
+// open with the O_CREATE flag creates a new data file,
 fd = open("/dir/file", O_CREATE|O_WRONLY);
 close(fd);
 
@@ -286,7 +485,7 @@ mknod("/console", 1, 1);
 
 ### fstat
 
-The fstat system call retrieves information from the inode that a file descriptor refers to. 
+The fstat system call retrieves information from the inode that a file descriptor refers to.
 It fills in a struct stat, defined in stat.h (kernel/stat.h) as:
 
 ```C
@@ -300,14 +499,16 @@ if(fstat(fd, &st) < 0){
   }
 
 ```
+
 ### link & unlink
 
 The link system call creates another file system name referring to the same inode as an existing
-file. 
+file.
+
 ```C
 // This fragment creates a new file named both a and b.
-// Reading from or writing to a is the same as reading from or writing to b. 
-//  Each inode is identified by a unique inode number. 
+// Reading from or writing to a is the same as reading from or writing to b.
+//  Each inode is identified by a unique inode number.
 // After the code sequence above, it is possible to determine that a and b refer to the same underlying contents by inspecting the result of fstat: both will return the same inode number (ino), and the nlink count will be set to 2.
 open("a", O_CREATE|O_WRONLY);
 link("a", "b");
@@ -322,42 +523,47 @@ space holding its content are only freed when the file’s link count is zero an
 refer to it.
 
 ## file utilities
-Unix provides file utilities callable from the shell as user-level programs, 
-for example 
+
+Unix provides file utilities callable from the shell as user-level programs,
+for example
+
 - mkdir
 - ln
 - rm
 
-
 One exception is cd, which is built into the shell
-
 
 # 1.5 Real world
 
 ## Unix
+
 - Unix’s combination of “standard” file descriptors, pipes, and convenient shell syntax for operations on them was a major advance in writing general-purpose reusable programs.
-- The idea sparked a culture of “software tools” that was responsible for much of Unix’s power and popularity, 
--  the shell was the first so-called “scripting language.” 
+- The idea sparked a culture of “software tools” that was responsible for much of Unix’s power and popularity,
+- the shell was the first so-called “scripting language.”
 - The Unix system call interface persists today in systems like BSD, Linux, and macOS.
 
 ### POSIX(Portable Operating System Interface )
+
 The Unix system call interface has been standardized through the Portable Operating System Interface (POSIX) standard
 
-
 ### Resources are files
+
 Unix unified access to multiple types of resources (files, directories, and devices) with a single
 set of file-name and file-descriptor interfaces.
 
 ## Xv6
+
 Xv6 is not POSIX compliant: it is missing many system calls (including basic ones such as lseek), and many of the system calls it does provide differ from the standard. Our main goals for xv6 are simplicity and clarity while providing a simple UNIX-like system-call interface.
 
 Xv6 does not provide a notion of users or of protecting one user from another; in Unix terms,
 all xv6 processes run as root.
 
 ## Operating System
-Any operating system must 
-- multiplex processes onto the underlying hardware, 
-- isolate processes from each other, 
+
+Any operating system must
+
+- multiplex processes onto the underlying hardware,
+- isolate processes from each other,
 - provide mechanisms for controlled inter-process communication.
 
 After studying xv6, you should be able to look at other, more complex operating systems and see the concepts underlying xv6 in those systems as well.

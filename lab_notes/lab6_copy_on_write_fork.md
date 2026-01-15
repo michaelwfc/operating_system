@@ -369,3 +369,264 @@ error: read failed
 Good! With CPUS=1 the garbled output is gone, confirming it's a race condition. Now we see the actual error: "read failed".
 This means the file test can't read from the file correctly after fork. The bug is likely in how you handle shared file descriptors and COW pages during reads.
 
+
+### Debug 4
+```bash
+xv6 kernel is booting
+
+kvminit kernel_pagetable: 0x0000000087fff000
+init: starting sh
+$ cowtest
+simple: ok
+simple: ok
+three: ok
+three: ok
+three: ok
+file: ok
+ALL COW TESTS PASSED
+$ usertests
+usertests starting
+test execout: cowfault error: pa2=0, usertrap scause=0x0x000000000000000f sepc=0x0x0000000000002ac0 stval=0x0x0000000000010b88
+OK
+test copyin: OK
+test copyout: OK
+test copyinstr1: OK
+test copyinstr2: OK
+test copyinstr3: OK
+test rwsbrk: OK
+test truncate1: OK
+test truncate2: OK
+test truncate3: OK
+test reparent2: OK
+test pgbug: OK
+test sbrkbugs: usertrap(): unexpected scause 0x000000000000000c pid=3248
+            sepc=0x000000000000555e stval=0x000000000000555e
+diagnose: fault va 0x0x000000000000555e
+  pte = 0x0x0000000000000000
+  PTE_V:0 PTE_R:0 PTE_W:0 PTE_X:0 PTE_U:0 PTE_COW(software):0x0x0000000000000000
+  PPN/PA = 0x0x0000000000000000
+usertrap(): unexpected scause 0x000000000000000c pid=3249
+            sepc=0x000000000000555e stval=0x000000000000555e
+diagnose: fault va 0x0x000000000000555e
+  pte = 0x0x0000000000000000
+  PTE_V:0 PTE_R:0 PTE_W:0 PTE_X:0 PTE_U:0 PTE_COW(software):0x0x0000000000000000
+  PPN/PA = 0x0x0000000000000000
+OK
+test badarg: OK
+test reparent: OK
+test twochildren: OK
+test forkfork: OK
+test forkforkfork: OK
+test argptest: OK
+test createdelete: OK
+test linkunlink: OK
+test linktest: OK
+test unlinkread: OK
+test concreate: OK
+test subdir: OK
+test fourfiles: OK
+test sharedfd: OK
+test dirtest: OK
+test exectest: OK
+test bigargtest: OK
+test bigwrite: OK
+test bsstest: OK
+test sbrkbasic: OK
+test sbrkmuch: OK
+test kernmem: usertrap(): unexpected scause 0x000000000000000d pid=6229
+            sepc=0x0000000000002026 stval=0x0000000080000000
+diagnose: fault va 0x0x0000000080000000
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6230
+            sepc=0x0000000000002026 stval=0x000000008000c350
+diagnose: fault va 0x0x000000008000c350
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6231
+            sepc=0x0000000000002026 stval=0x00000000800186a0
+diagnose: fault va 0x0x00000000800186a0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6232
+            sepc=0x0000000000002026 stval=0x00000000800249f0
+diagnose: fault va 0x0x00000000800249f0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6233
+            sepc=0x0000000000002026 stval=0x0000000080030d40
+diagnose: fault va 0x0x0000000080030d40
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6234
+            sepc=0x0000000000002026 stval=0x000000008003d090
+diagnose: fault va 0x0x000000008003d090
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6235
+            sepc=0x0000000000002026 stval=0x00000000800493e0
+diagnose: fault va 0x0x00000000800493e0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6236
+            sepc=0x0000000000002026 stval=0x0000000080055730
+diagnose: fault va 0x0x0000000080055730
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6237
+            sepc=0x0000000000002026 stval=0x0000000080061a80
+diagnose: fault va 0x0x0000000080061a80
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6238
+            sepc=0x0000000000002026 stval=0x000000008006ddd0
+diagnose: fault va 0x0x000000008006ddd0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6239
+            sepc=0x0000000000002026 stval=0x000000008007a120
+diagnose: fault va 0x0x000000008007a120
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6240
+            sepc=0x0000000000002026 stval=0x0000000080086470
+diagnose: fault va 0x0x0000000080086470
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6241
+            sepc=0x0000000000002026 stval=0x00000000800927c0
+diagnose: fault va 0x0x00000000800927c0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6242
+            sepc=0x0000000000002026 stval=0x000000008009eb10
+diagnose: fault va 0x0x000000008009eb10
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6243
+            sepc=0x0000000000002026 stval=0x00000000800aae60
+diagnose: fault va 0x0x00000000800aae60
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6244
+            sepc=0x0000000000002026 stval=0x00000000800b71b0
+diagnose: fault va 0x0x00000000800b71b0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6245
+            sepc=0x0000000000002026 stval=0x00000000800c3500
+diagnose: fault va 0x0x00000000800c3500
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6246
+            sepc=0x0000000000002026 stval=0x00000000800cf850
+diagnose: fault va 0x0x00000000800cf850
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6247
+            sepc=0x0000000000002026 stval=0x00000000800dbba0
+diagnose: fault va 0x0x00000000800dbba0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6248
+            sepc=0x0000000000002026 stval=0x00000000800e7ef0
+diagnose: fault va 0x0x00000000800e7ef0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6249
+            sepc=0x0000000000002026 stval=0x00000000800f4240
+diagnose: fault va 0x0x00000000800f4240
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6250
+            sepc=0x0000000000002026 stval=0x0000000080100590
+diagnose: fault va 0x0x0000000080100590
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6251
+            sepc=0x0000000000002026 stval=0x000000008010c8e0
+diagnose: fault va 0x0x000000008010c8e0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6252
+            sepc=0x0000000000002026 stval=0x0000000080118c30
+diagnose: fault va 0x0x0000000080118c30
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6253
+            sepc=0x0000000000002026 stval=0x0000000080124f80
+diagnose: fault va 0x0x0000000080124f80
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6254
+            sepc=0x0000000000002026 stval=0x00000000801312d0
+diagnose: fault va 0x0x00000000801312d0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6255
+            sepc=0x0000000000002026 stval=0x000000008013d620
+diagnose: fault va 0x0x000000008013d620
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6256
+            sepc=0x0000000000002026 stval=0x0000000080149970
+diagnose: fault va 0x0x0000000080149970
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6257
+            sepc=0x0000000000002026 stval=0x0000000080155cc0
+diagnose: fault va 0x0x0000000080155cc0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6258
+            sepc=0x0000000000002026 stval=0x0000000080162010
+diagnose: fault va 0x0x0000000080162010
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6259
+            sepc=0x0000000000002026 stval=0x000000008016e360
+diagnose: fault va 0x0x000000008016e360
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6260
+            sepc=0x0000000000002026 stval=0x000000008017a6b0
+diagnose: fault va 0x0x000000008017a6b0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6261
+            sepc=0x0000000000002026 stval=0x0000000080186a00
+diagnose: fault va 0x0x0000000080186a00
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6262
+            sepc=0x0000000000002026 stval=0x0000000080192d50
+diagnose: fault va 0x0x0000000080192d50
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6263
+            sepc=0x0000000000002026 stval=0x000000008019f0a0
+diagnose: fault va 0x0x000000008019f0a0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6264
+            sepc=0x0000000000002026 stval=0x00000000801ab3f0
+diagnose: fault va 0x0x00000000801ab3f0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6265
+            sepc=0x0000000000002026 stval=0x00000000801b7740
+diagnose: fault va 0x0x00000000801b7740
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6266
+            sepc=0x0000000000002026 stval=0x00000000801c3a90
+diagnose: fault va 0x0x00000000801c3a90
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6267
+            sepc=0x0000000000002026 stval=0x00000000801cfde0
+diagnose: fault va 0x0x00000000801cfde0
+  walk returned NULL pte
+usertrap(): unexpected scause 0x000000000000000d pid=6268
+            sepc=0x0000000000002026 stval=0x00000000801dc130
+diagnose: fault va 0x0x00000000801dc130
+  walk returned NULL pte
+OK
+test sbrkfail: usertrap(): unexpected scause 0x000000000000000d pid=6280
+            sepc=0x00000000000040c6 stval=0x0000000000012000
+diagnose: fault va 0x0x0000000000012000
+  pte = 0x0x0000000000000000
+  PTE_V:0 PTE_R:0 PTE_W:0 PTE_X:0 PTE_U:0 PTE_COW(software):0x0x0000000000000000
+  PPN/PA = 0x0x0000000000000000
+OK
+test sbrkarg: OK
+test validatetest: OK
+test stacktest: usertrap(): unexpected scause 0x000000000000000d pid=6284
+            sepc=0x0000000000002196 stval=0x000000000000fba0
+diagnose: fault va 0x0x000000000000fba0
+  pte = 0x0x0000000021f5710b
+  PTE_V:1 PTE_R:1 PTE_W:0 PTE_X:1 PTE_U:0 PTE_COW(software):0x0x0000000000000001
+  PPN/PA = 0x0x0000000087d5c000
+OK
+test opentest: OK
+test writetest: OK
+test writebig: OK
+test createtest: OK
+test openiput: OK
+test exitiput: OK
+test iput: OK
+test mem: OK
+test pipe1: OK
+test preempt: kill... wait... OK
+test exitwait: OK
+test rmdot: OK
+test fourteen: OK
+test bigfile: OK
+test dirfile: OK
+test iref: OK
+test forktest: OK
+test bigdir: OK
+ALL TESTS PASSED
+```

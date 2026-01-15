@@ -139,6 +139,13 @@ This debugging information is stored in the object file; it describes the data t
 ```bash
 # -O0 Disables optimization (useful for debugging).
 gcc -g -O0 -o myprogram myprogram.c
+
+# Make file
+CFLAGS = -Wall -Werror -O -fno-omit-frame-pointer -ggdb
+# 编译 kernel/ 时关闭优化，打开 debug 信息
+# -O0 -g
+CFLAGS = -Wall -Werror -O0 -fno-omit-frame-pointer -ggdb
+
 ```
 
 This command compiles myprogram.c into an executable named myprogram, including debugging symbols.

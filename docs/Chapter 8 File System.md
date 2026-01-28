@@ -86,10 +86,37 @@ sectors和blocks。
 
 通常来说，bitmap block，inode blocks 和 log blocks被统称为 **metadata block**。 它们虽然不存储实际的数据，但是它们存储了能帮助文件系统完成工作的元数据。
 
+## XV6的文件系统
+你可以认为磁盘分为了两个部分：
+### 1. 文件系统目录的树结构
+以root目录为根节点，往下可能有其他的目录，我们可以认为目录结构就是一个树状的数据结构。
+假设root目录下有两个子目录D1和D2，D1目录下有两个文件F1和F2，每个文件又包含了一些block。
+除此之外，还有一些其他并非是树状结构的数据，比如bitmap表明了每一个data block是空闲的还是已经被分配了。
+inode，目录内容，bitmap block，我们将会称之为metadata block
+（注，Frans和Robert在这里可能有些概念不统一，对于Frans来说，目录内容应该也属于文件内容，目录是一种特殊的文件，详见14.3；而对于Robert来说，目录内容是metadata。），
+另一类就是持有了文件内容的block，或者叫data block。
+
+### 2. log。
+XV6的log相对来说比较简单，它有header block，之后是一些包含了有变更的文件系统block，这里可以是metadata block也可以是data block。
+header block会记录之后的每一个log block应该属于文件系统中哪个block，假设第一个log block属于block 17，第二个属于block 29。
+
+在计算机上，我们会有一些用户程序调用write/create系统调用来修改文件系统。在内核中存在block cache，最初write请求会被发到block cache。block cache就是磁盘中block在内存中的拷贝，所以最初对于文件block或者inode的更新走到了block cache。
+
+在write系统调用的最后，这些更新都被拷贝到了log中，之后我们会更新header block的计数来表明当前的transaction已经结束了。在文件系统的代码中，任何修改了文件系统的系统调用函数中，某个位置会有begin_op，表明马上就要进行一系列对于文件系统的更新了，不过在完成所有的更新之前，不要执行任何一个更新。在begin_op之后是一系列的read/write操作。最后是end_op，用来告诉文件系统现在已经完成了所有write操作。所以在begin_op和end_op之间，所有的write block操作只会走到block cache中。当系统调用走到了end_op函数，文件系统会将修改过的block cache拷贝到log中。
+
+在拷贝完成之后，文件系统会将修改过的block数量，通过一个磁盘写操作写入到log的header block，这次写入被称为commit point。
+在commit point之前，如果发生了crash，在重启时，整个transaction的所有写磁盘操作最后都不会应用。在commit point之后，即使立即发生了crash，重启时恢复软件会发现在log header中记录的修改过的block数量不为0，接下来就会将log header中记录的所有block，从log区域写入到文件系统区域。
+
+这里实际上使得系统调用中位于begin_op和end_op之间的所有写操作在面对crash时具备原子性。也就是说，要么文件系统在crash之前更新了log的header block，这样所有的写操作都能生效；要么crash发生在文件系统更新log的header block之前，这样没有一个写操作能生效。
+
+在crash并重启时，必须有一些恢复软件能读取log的header block，并判断里面是否记录了未被应用的block编号，如果有的话，需要写（也有可能是重写）log block到文件系统中对应的位置；如果没有的话，恢复软件什么也不用做。
 
 
 
 # Inode layer 
+
+
+在logging层之上，XV6有inode cache，这主要是为了同步（synchronization），我们稍后会介绍。inode通常小于一个disk block，所以多个inode通常会打包存储在一个disk block中。为了向单个inode提供同步操作，XV6维护了 inode cache。
 
 provides individual files, each represented as an inode with a unique i-number and some blocks holding the file’s data. 
 
@@ -184,8 +211,399 @@ inode中block number 0到block number 11都是direct block number
 block number 12保存的indirect block number指向了另一个block。
 
 
+## Inode Allocation
 
-### Lifecycle of an inode
+To allocate a new inode (for example, when creating a file), xv6 calls `ialloc` (kernel/fs.c:196).
+Ialloc is similar to `balloc`: it loops over the inode structures on the disk, one block at a time,
+looking for one that is marked free. 
+When it finds one, it claims it by writing the new type to the disk and then returns an entry from the inode table with the tail call to `iget` (kernel/fs.c:210). 
+
+The correct operation of ialloc depends on the fact that only one process at a time can be holding a reference to `bp`: 
+ialloc can be sure that some other process does not simultaneously see that the inode is available and try to claim it.
+
+### ialloc()
+
+#### what is `ialloc()` really doing?
+ialloc() finds a free on-disk inode, marks it allocated, writes that fact to disk transactionally, and returns an in-memory inode (struct inode *) that represents it.
+Returns an unlocked but allocated and referenced inode.
+
+```c
+// Allocate an inode on device dev.
+// Mark it as allocated by  giving it type type.
+// Returns an unlocked but allocated and referenced inode.
+struct inode*
+ialloc(uint dev, short type)
+{
+  int inum;
+  struct buf *bp;
+  struct dinode *dip;
+
+  // 1. Scan all inodes (yes, linearly)
+  // Inode numbers start at 1
+  // inum == 0 is reserved / invalid
+  for(inum = 1; inum < sb.ninodes; inum++){
+    // 2. Read the disk block that contains inode inum
+    // IBLOCK(inum, sb) tells you which disk block contains this inode
+    // bread() pulls that block into the buffer cache
+    bp = bread(dev, IBLOCK(inum, sb));
+
+    // 3. Locate the exact struct dinode inside the block
+    // (struct dinode*)bp->data:  treat block data as an array of struct dinode
+    // inum % IPB : index of the inode within this block
+    // dip points to the on-disk inode
+    dip = (struct dinode*)bp->data + inum%IPB;
+
+    // 4️. Is this inode free?
+    if(dip->type == 0){  // a free inode
+      // 5. Zero it and claim it
+      memset(dip, 0, sizeof(*dip));
+      // this is the moment of allocation
+      dip->type = type;
+      
+      //6. Write the change transactionally
+      log_write(bp);   // mark it allocated on the disk
+
+      // 7. Release the buffer cache entry
+      brelse(bp);
+
+      // 8. Return an in-memory inode
+      return iget(dev, inum);
+    }
+    brelse(bp);
+  }
+  panic("ialloc: no inodes");
+}
+```
+
+`ialloc()` scans the on-disk inode table, finds a free dinode, marks it allocated inside a log transaction, and returns the corresponding in-memory inode.
+
+### iget()
+
+Iget (kernel/fs.c:243) looks through the inode table for an active entry (`ip->ref > 0`) with
+the desired device and inode number. 
+If it finds one, it returns a new reference to that inode (kernel/fs.c:252-256). 
+As iget scans, it records the position of the first empty slot (kernel/fs.c:257-258), which it uses if it needs to allocate a table entry.
+
+
+#### what is iget() for?
+`iget(dev, inum) `returns the unique in-memory representative of “inode number inum on device dev”.
+
+iget():
+- finds or creates a struct inode in the inode cache (icache)
+- increments its reference count
+- returns it unlocked
+
+Invariant xv6 wants to maintain:
+For any (dev, inum), there is at most one struct inode in memory.
+
+iget() enforces that invariant.
+
+
+```c
+// Find the inode with number inum on device dev
+// and return the in-memory copy. Does not lock
+// the inode and does not read it from disk.
+static struct inode*
+iget(uint dev, uint inum)
+{
+  struct inode *ip, *empty;
+  // 1.Lock the inode cache
+  acquire(&icache.lock);
+
+  // 2. Scan the cache
+  // Is the inode already cached?
+  empty = 0;
+  for(ip = &icache.inode[0]; ip < &icache.inode[NINODE]; ip++){
+    // Case A: inode already cached
+    // ref > 0 → slot is in use
+    // (dev, inum) uniquely identifies a disk inode
+    // Increment ref → another user now holds it
+    
+    if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){
+      // Notice: No disk access, No locking of the inode itself, Just reference counting
+      // This is why:  two processes opening the same file, end up sharing the same struct inode
+      ip->ref++;
+      release(&icache.lock);
+      return ip;
+    }
+    // First, try to find the inode.
+    // Only if it doesn’t exist, reuse an empty slot.
+    if(empty == 0 && ip->ref == 0)    // Remember empty slot.
+      empty = ip;
+  }
+
+  // Case B: inode not cached → recycle a slot
+  // Recycle an inode cache entry.
+  if(empty == 0)
+    panic("iget: no inodes");
+
+  //Initialize the new cache entry
+  ip = empty;
+  ip->dev = dev;
+  ip->inum = inum;
+  ip->ref = 1;
+  ip->valid = 0;  //“I haven’t read the on-disk inode yet.”
+
+  // Release cache lock and return
+  release(&icache.lock);
+  // At this point:
+  // You have a struct inode *
+  // It is referenced
+  // It is not locked
+  // It is possibly invalid
+  return ip;
+}
+```
+
+iget() ensures there is exactly one in-memory inode per (dev, inum), bumps its reference count, and postpones all real work until ilock().
+
+
+#### Q: Why iget() does not lock the inode
+Because locking implies sleeping, and:
+- iget() is often called while holding other locks
+- sleeping here would invite deadlocks
+
+Instead, xv6 uses a two-phase protocol:
+- iget() → identity + refcount
+- ilock() → data + disk I/O
+
+You’ll often see this pattern:
+
+```c
+ip = iget(dev, inum);
+ilock(ip);
+
+```
+That separation is one of xv6’s cleanest design choices.
+
+#### Q: Why iget() does not read from disk
+Because:
+- not every inode access needs disk data
+- path traversal needs identity before data
+- caching works best when reads are delayed
+
+
+### ilock()
+
+Code must lock the inode using ilock before reading or writing its metadata or content. Ilock (kernel/fs.c:289) uses a sleep-lock for this purpose. Once ilock has exclusive access to the inode, it reads the inode from disk (more likely, the buffer cache) if needed. The function iunlock (kernel/fs.c:317) releases the sleep-lock, which may cause any processes sleeping to be woken up.
+
+
+Disk reads happen in ilock():
+```c
+if(ip->valid == 0)
+  read dinode from disk
+```
+xv6 does:
+- read the dinode from disk
+- copy it into inode
+- set valid = 1
+
+
+### iput()
+
+
+
+
+
+
+## Inode content
+
+### The representation of a file on disk.
+The on-disk inode structure, `struct dinode`, contains a size and an array of block numbers (see Figure 8.3). 
+
+![image](../images/Figure%208.3-The%20representation%20of%20a%20file%20on%20disk.png)
+
+The inode data is found in the blocks listed in the dinode ’s addrs array. 
+
+#### direct blocks
+The first `NDIRECT` blocks of data are listed in the first NDIRECT entries in the array; 
+these blocks are called **direct blocks**. 
+
+#### indirect block
+The next NINDIRECT blocks of data are listed not in the inode but in a data block called the **indirect block**. 
+The last entry in the addrs array gives the address of the indirect block.
+
+Thus the first 12 kB ( `NDIRECT x BSIZE`) bytes of a file can be loaded from blocks listed in the inode, 
+while the next 256 kB ( NINDIRECT x BSIZE) bytes can only be loaded after consulting the indirect block. 
+
+his is a good on-disk representation but a complex one for clients. 
+
+
+### bmap
+The function `bmap` manages the representation so that higher-level routines, such as `readi` and `writei`, which we will see shortly, do not need to manage this complexity. 
+Bmap returns the disk block number of allocated on demand (kernel/fs.c:384-385) (kernel/fs.c:392-393).
+
+Bmap makes it easy for readi and writei to get at an inode’s data. 
+`Readi` (kernel/fs.c:456) starts by making sure that the offset and count are not beyond the end of the file. 
+Reads that start beyond the end of the file return an error (kernel/fs.c:461-462) while reads that start at or cross the end of the file return fewer bytes than requested (kernel/fs.c:463-464). 
+The main loop processes each block of the file, copying data from the buffer into dst (kernel/fs.c:466-475). 
+
+`writei` (kernel/fs.c:487) is identical to readi, with three exceptions: 
+- writes that start at or cross the end of the file grow the file, up to the maximum file size (kernel/fs.c:494-495)
+- the loop copies data into the buffers instead of out (kernel/fs.c:36); 
+- and if the write has extended the file, writei must update its size Both readi and writei begin by checking for ip->type == T_DEV. 
+- This case handles special devices whose data does not live in the file system; we will return to this case in the file descriptor layer.
+
+```c
+#define NDIRECT   12
+#define NINDIRECT (BSIZE / sizeof(uint))  // 256
+
+
+// Inode content
+//
+// The content (data) associated with each inode is stored
+// in blocks on the disk. The first NDIRECT block numbers
+// are listed in ip->addrs[].  The next NINDIRECT blocks are
+// listed in block ip->addrs[NDIRECT].
+
+// Return the disk block address of the nth block in inode ip.
+// If there is no such block, bmap allocates one.
+
+/**
+input : bn - logical block number within the file，0-based， bn is file-relative, not a disk block number.
+output: disk block number
+
+singly-indirect block: 
+xv6 does not have a special “indirect block type”. 
+It’s just a normal disk block, interpreted differently.
+
+
+// On-disk inode layout (original xv6)
+ip->addrs[]:
+addrs[0]  -> direct block 0
+addrs[1]  -> direct block 1
+...
+addrs[11] -> direct block 11
+addrs[12] -> singly-indirect block
+
+So the file layout is:
+logical blocks 0   .. 11   -> direct blocks
+logical blocks 12  .. 267  -> indirect blocks (256 of them)
+
+Case A: Direct block entry
+ip->addrs[0] = 500;
+Meaning: Disk block 500 contains FILE DATA
+
+inode
+ └── addrs[0] ──▶ [ DATA DATA DATA ... ]
+
+
+
+Case B: Indirect block entry
+ip->addrs[NDIRECT] = 800;
+Meaning:
+Disk block 800 does NOT contain file data.
+Disk block 800 contains an ARRAY OF BLOCK NUMBERS.
+
+inode
+ └── addrs[12] ──▶ [ 1200 | 1201 | 1202 | ... ]
+
+That is why it is called an “indirect block”:
+It doesn’t point to data — it points to blocks that point to data.
+
+
+So the indirect block layout on disk is literally:
++-------------------------------+
+| a[0]  | a[1]  | a[2]  | ...   |
+| blk#  | blk#  | blk#  |       |
++-------------------------------+
+
+
+
+Each entry points to one data block.
+
+
+ip->addrs[0]   -> data block
+...
+ip->addrs[11]  -> data block
+ip->addrs[12]  -> indirect block (NOT data!)
+
+Why the indexing works (this is the “aha”) ?
+// direct
+ip->addrs[bn]
+
+// indirect
+ip->addrs[NDIRECT]   // block holding array
+a[bn - NDIRECT]      // index into that array
+
+*/
+
+
+
+static uint
+bmap(struct inode *ip, uint bn)
+{
+  // addr: Always means: a disk block number
+  // ip->addrs[] (inode field): 
+  // Stored inside the inode
+  // For i < NDIRECT: points directly to data blocks
+  //For i == NDIRECT: points to one indirect block
+  uint addr, *a;
+  struct buf *bp;
+  
+  // If the logical block number is 0..11
+  // Use it directly as an index into ip->addrs[]
+  if(bn < NDIRECT){
+    // ip->addrs[bn] holds the disk block number of the direct block
+    if((addr = ip->addrs[bn]) == 0)
+      ip->addrs[bn] = addr = balloc(ip->dev);
+    return addr;
+  }
+
+  // bn = logical block number *within the indirect region*
+  // So we “re-base” bn to start at 0 for the indirect block.
+  //In other words:
+  // Original bn	Meaning before	Meaning after bn -= NDIRECT
+  // 12	          1st indirect	      0 (1st entry in indirect block)
+  // 13	          2nd indirect	      1
+  // 267	        last indirect     	255
+  bn -= NDIRECT;
+  // “Is this logical block within the 256 blocks covered by the indirect block?”
+  if(bn < NINDIRECT){
+    // Load indirect block, allocating if necessary.
+    // addr = ip->addrs[NDIRECT] holds the disk block number of the indirect block
+    // Means: “This inode has ONE block whose job is to store 256 disk block numbers.”
+    if((addr = ip->addrs[NDIRECT]) == 0)
+      ip->addrs[NDIRECT] = addr = balloc(ip->dev);
+
+    // Read the indirect block from disk
+    bp = bread(ip->dev, addr);
+
+    // Now in memory: bp->data  (1024 bytes)
+    // That block’s contents are interpreted as an array : a[0], a[1], ..., a[255],Each entry is a disk block number.
+    a = (uint*)bp->data;
+    // a[] (array inside indirect block)
+    // This is the content of the indirect block, interpreted as an array.
+    
+    // Each a[i]: Is a disk block number , Points to a data block
+    // a[0]   -> disk block for logical block 12
+    // a[1]   -> disk block for logical block 13
+    // ...
+    // a[255] -> disk block for logical block 267
+
+    // Index into the array
+    if((addr = a[bn]) == 0){
+      a[bn] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    return addr;
+  }
+
+  panic("bmap: out of range");
+}
+```
+
+### itrunc
+`itrunc` frees a file’s blocks, resetting the inode’s size to zero.
+Itrunc (kernel/fs.c:410) starts by freeing the direct blocks (kernel/fs.c:416-421), then the ones listed in the indirect block (kernel/fs.c:426-429), and finally the indirect block itself (kernel/fs.c:431-432).
+
+### stati
+The function stati (kernel/fs.c:442) copies inode metadata into the `stat structure`, which is
+exposed to user programs via the stat system call.
+
+
+## Lifecycle of an inode
 ```
 disk:   dinode exists
         ↓
@@ -258,6 +676,8 @@ Frans教授：因为每个编号是4个字节。1024/4 = 256。这又带出了�
 对于8000，我们首先除以1024，也就是block的大小，得到大概是7。这意味着第7个block就包含了第8000个字节。所以直接在inode的direct block number中，就包含了第8000个字节的block。为了找到这个字节在第7个block的哪个位置，我们需要用8000对1024求余数，我猜结果是是832。所以为了读取文件的第8000个字节，文件系统查看inode，先用8000除以1024得到block number，然后再用8000对1024求余读取block中对应的字节。
 
 总结一下，inode中的信息完全足够用来实现read/write系统调用，至少可以找到哪个disk block需要用来执行read/write系统调用。
+
+
 
 
 # File system工作示例
@@ -443,15 +863,12 @@ sys_write("\n")
 
 
 
-
-# Crash recovery
+## Crash recovery Exampels
 
 我们将会看到很多文件系统的操作都包含了多个步骤，如果我们在多个步骤的错误位置crash或者电力故障了，存储在磁盘上的文件系统可能会是一种不一致的状态，之后可能会发生一些坏的事情。
 
 我们今天会研究对于这类特定问题的解决方法，也就是logging。这是一个最初来自于数据库世界的很流行的解决方案，现在很多文件系统都在使用logging。
 
-
-## Crash Exampels
 
 ### Example 1
 ```bash
@@ -499,13 +916,12 @@ write: 33  # update inode x: size
 所以这里的问题并不在于操作的顺序，而在于我们这里有多个写磁盘的操作，这些操作必须作为一个原子操作出现在磁盘上。
 
 
-## Logging layer
+# Logging layer
 
 
 allows higher layers to wrap updates to several blocks in a transaction, and ensures that the blocks are updated **atomically** in the face of crashes (i.e., all of them are updated or none). 
 
 
-在logging层之上，XV6有inode cache，这主要是为了同步（synchronization），我们稍后会介绍。inode通常小于一个disk block，所以多个inode通常会打包存储在一个disk block中。为了向单个inode提供同步操作，XV6维护了 inode cache。
 
 
 What the logging layer is (conceptually)
@@ -531,7 +947,7 @@ Think of it as:
 - High performance
   最后，原则上来说，它可以非常的高效，尽管我们在XV6中看到的实现不是很高效。
 
-## logging的基本思想
+## logging的基本流程
 logging的基本思想还是很直观的。
 首先，你将磁盘分割成两个部分，其中一个部分是log，另一个部分是文件系统，文件系统可能会比log大得多。
 
@@ -561,23 +977,6 @@ logging的基本思想还是很直观的。
   一旦完成了，就可以清除log。清除log实际上就是将属于同一个文件系统的操作的个数设置为0。
 
 
-
-### 为什么这样的工作方式是好的呢？
-假设我们crash并重启了。在重启的时候，文件系统会查看log的commit记录值，
-- 如果是0的话，那么什么也不做。
-- 如果大于0的话，我们就知道log中存储的block需要被写入到文件系统中，很明显我们在crash的时候并不一定完成了install log，我们可能是在commit之后，clean log之前crash的。所以这个时候我们需要做的就是reinstall（注，也就是将log中的block再次写入到文件系统），再clean log。
-
-这里的方法之所以能起作用，是因为可以确保当发生crash（并重启之后），我们要么将写操作所有相关的block都在文件系统中更新了，要么没有更新任何一个block，我们永远也不会只写了一部分block。
-
-为什么可以确保呢？我们考虑crash的几种可能情况。
-- 在第1步和第2步之间crash会发生什么？
-在重启的时候什么也不会做，就像系统调用从没有发生过一样，也像crash是在文件系统调用之前发生的一样。这完全可以，并且也是可接受的。
-
-- 在第2步和第3步之间crash会发生什么？
-  在这个时间点，所有的log block都落盘了，因为有commit记录，所以完整的文件系统操作必然已经完成了。我们可以将log block写入到文件系统中相应的位置，这样也不会破坏文件系统。所以这种情况就像系统调用正好在crash之前就完成了。
-
-- 在install（第3步）过程中和第4步之前这段时间crash会发生什么？
-  在下次重启的时候，我们会redo log，我们或许会再次将log block中的数据再次拷贝到文件系统。这样也是没问题的，因为log中的数据是固定的，我们就算重复写了文件系统，每次写入的数据也是不变的。重复写入并没有任何坏处，因为我们写入的数据可能本来就在文件系统中，所以多次install log完全没问题。当然在这个时间点，我们不能执行任何文件系统的系统调用。我们应该在重启文件系统之前，在重启或者恢复的过程中完成这里的恢复操作。换句话说，install log是幂等操作（注，idempotence，表示执行多次和执行一次效果一样），你可以执行任意多次，最后的效果都是一样的。
 
 ## Xv6  logging
 
@@ -722,6 +1121,229 @@ $10 = {
 }
 
 ```
+
+
+### WRITE AHEAD RULE
+
+包括XV6在内的所有logging系统，都需要遵守write ahead rule。这里的意思是，任何时候如果一堆写操作需要具备原子性，系统需要先将所有的写操作记录在log中，之后才能将这些写操作应用到文件系统的实际位置。也就是说，我们需要预先在log中定义好所有需要具备原子性的更新，之后才能应用这些更新。
+write ahead rule是logging能实现故障恢复的基础。write ahead rule使得一系列的更新在面对crash时具备了原子性。
+
+### FREEING RULE
+另一点是，XV6对于不同的系统调用复用的是同一段log空间，但是直到log中所有的写操作被更新到文件系统之前，我们都不能释放或者重用log。我将这个规则称为freeing rule，它表明我们不能覆盖或者重用log空间，直到保存了transaction所有更新的这段log，都已经反应在了文件系统中。
+
+这些规则使得，就算一个文件系统更新可能会复杂且包含多个写操作，但是每次更新都是原子的，在crash并重启之后，要么所有的写操作都生效，要么没有写操作能生效。
+
+
+### 为什么这样的工作方式是好的呢？
+假设我们crash并重启了。在重启的时候，文件系统会查看log的commit记录值，
+- 如果是0的话，那么什么也不做。
+- 如果大于0的话，我们就知道log中存储的block需要被写入到文件系统中，很明显我们在crash的时候并不一定完成了install log，我们可能是在commit之后，clean log之前crash的。所以这个时候我们需要做的就是reinstall（注，也就是将log中的block再次写入到文件系统），再clean log。
+
+这里的方法之所以能起作用，是因为可以确保当发生crash（并重启之后），我们要么将写操作所有相关的block都在文件系统中更新了，要么没有更新任何一个block，我们永远也不会只写了一部分block。
+
+为什么可以确保呢？我们考虑crash的几种可能情况。
+- 在第1步和第2步之间crash会发生什么？
+在重启的时候什么也不会做，就像系统调用从没有发生过一样，也像crash是在文件系统调用之前发生的一样。这完全可以，并且也是可接受的。
+
+- 在第2步和第3步之间crash会发生什么？
+  在这个时间点，所有的log block都落盘了，因为有commit记录，所以完整的文件系统操作必然已经完成了。我们可以将log block写入到文件系统中相应的位置，这样也不会破坏文件系统。所以这种情况就像系统调用正好在crash之前就完成了。
+
+- 在install（第3步）过程中和第4步之前这段时间crash会发生什么？
+  在下次重启的时候，我们会redo log，我们或许会再次将log block中的数据再次拷贝到文件系统。这样也是没问题的，因为log中的数据是固定的，我们就算重复写了文件系统，每次写入的数据也是不变的。重复写入并没有任何坏处，因为我们写入的数据可能本来就在文件系统中，所以多次install log完全没问题。当然在这个时间点，我们不能执行任何文件系统的系统调用。我们应该在重启文件系统之前，在重启或者恢复的过程中完成这里的恢复操作。换句话说，install log是幂等操作（注，idempotence，表示执行多次和执行一次效果一样），你可以执行任意多次，最后的效果都是一样的。
+
+
+
+# Linux Logging 
+要介绍Linux的logging方案，就需要了解XV6的logging有什么问题？为什么Linux不使用与XV6完全一样的logging方案？这里的回答简单来说就是XV6的logging太慢了。
+
+XV6中的任何一个例如create/write的系统调用，需要在整个transaction完成之后才能返回。所以在创建文件的系统调用返回到用户空间之前，它需要完成所有end_op包含的内容，这包括了：
+
+- 将所有更新了的block写入到log
+- 更新header block
+- 将log中的所有block写回到文件系统分区中
+- 清除header block
+
+之后才能从系统调用中返回。在任何一个文件系统调用的commit过程中，不仅是占据了大量的时间，而且其他系统调用也不能对文件系统有任何的更新。所以这里的系统调用实际上是一次一个的发生，而每个系统调用需要许多个写磁盘的操作。
+这里每个系统调用需要等待它包含的所有写磁盘结束，对应的技术术语被称为synchronize。
+
+XV6的系统调用对于写磁盘操作来说是同步的（synchronized），所以它非常非常的慢。在使用机械硬盘时，它出奇的慢，因为每个写磁盘都需要花费10毫秒，而每个系统调用又包含了多个写磁盘操作。所以XV6每秒只能完成几个更改文件系统的系统调用。如果我们在SSD上运行XV6会快一些，但是离真正的高效还差得远。
+
+
+另一件需要注意的更具体的事情是，在XV6的logging方案中，每个block都被写了两次。第一次写入到了log，第二次才写入到实际的位置。虽然这么做有它的原因，但是ext3可以一定程度上修复这个问题。
+
+
+## EX3
+
+ext3文件系统就是基于今天要阅读的论文，再加上几年的开发得到的，并且ext3也曾经广泛的应用过。ext3是针对之前一种的文件系统（ext2）logging方案的修改，所以ext3就是在几乎不改变之前的ext2文件系统的前提下，在其上增加一层logging系统。所以某种程度来说，logging是一个容易升级的模块。
+
+ext3的数据结构与XV6是类似的。
+### Memory
+#### block cache
+在内存中，存在block cache，这是一种write-back cache（注，区别于write-through cache，指的是cache稍后才会同步到真正的后端）。
+block cache中缓存了一些block，其中的一些是干净的数据，因为它们与磁盘上的数据是一致的；其他一些是脏数据，因为从磁盘读出来之后被修改过；有一些被固定在cache中，基于前面介绍的write-ahead rule和freeing rule，不被允许写回到磁盘中。
+
+#### transaction信息
+除此之外，ext3还维护了一些transaction信息。它可以维护多个在不同阶段的transaction的信息。每个transaction的信息包含有：
+- 一个序列号
+- 一系列该transaction修改的block编号。
+  这些block编号指向的是在cache中的block，因为任何修改最初都是在cache中完成。
+- 一系列的handle
+  handle对应了系统调用，并且这些系统调用是transaction的一部分，会读写cache中的block
+
+
+### 磁盘
+与XV6一样：
+- 会有一个文件系统树，包含了inode，目录，文件等等
+- 会有bitmap block来表明每个data block是被分配的还是空闲的
+- 在磁盘的一个指定区域，会保存log
+
+目前为止，这与XV6非常相似。主要的区别在于ext3可以同时跟踪多个在不同执行阶段的transaction。
+
+
+## ext3 file system log format
+这与XV6中的log有点不一样。
+### super block
+在log的最开始，是 super block。这是log的super block，而不是文件系统的super block。
+log的super block包含了log中第一个有效的transaction的起始位置和序列号。
+- 起始位置就是磁盘上log分区的block编号，
+- 序列号就是前面提到的每个transaction都有的序列号。
+  
+log是磁盘上一段固定大小的连续的block。
+### transaction
+log中，除了super block以外的block存储了transaction。每个transaction在log中包含了：
+
+- 一个descriptor block，其中包含了log数据对应的实际block编号，这与XV6中的header block很像。
+- 之后是针对每一个block编号的更新数据。
+- 最后当一个transaction完成并commit了，会有一个commit block
+
+因为log中可能有多个transaction，commit block之后可能会跟着下一个transaction的descriptor block，data block和commit block。所以log可能会很长并包含多个transaction。我们可以认为super block中的起始位置和序列号属于最早的，排名最靠前的，并且是有效的transaction。
+
+
+学生提问：有没有可能使用一个descriptor block管理两个transaction？是不是只能一个transaction结束了才能开始下一个transaction？
+
+Robert教授：Log中会有多个transaction，但是的确一个时间只有一个正在进行的transaction。上面的图片没能很好的说明这一点，当前正在进行的transaction对应的是正在执行写操作的系统调用。所以当前正在进行的transaction只存在于内存中，对应的系统调用只会更新cache中的block，也就是内存中的文件系统block。当ext3决定结束当前正在进行的transaction，它会做两件事情：首先开始一个新的transaction，这将会是下一个transaction；其次将刚刚完成的transaction写入到磁盘中，这可能要花一点时间。所以完整的故事是，磁盘上的log分区有一系列旧的transaction，这些transaction已经commit了，除此之外，还有一个位于内存的正在进行的transaction。在磁盘上的transaction，只能以log记录的形式存在，并且还没有写到对应的文件系统block中。logging系统在后台会从最早的transaction开始，将transaction中的data block写入到对应的文件系统中。当整个transaction的data block都写完了，之后logging系统才能释放并重用log中的空间。所以log其实是个循环的数据结构，如果用到了log的最后，logging系统会从log的最开始位置重新使用。
+
+## ext3如何提升性能
+ext3通过3种方式提升了性能：
+
+首先，它提供了异步的（asynchronous）系统调用，也就是说系统调用在写入到磁盘之前就返回了，系统调用只会更新缓存在内存中的block，并不用等待写磁盘操作。不过它可能会等待读磁盘。
+
+第二，它提供了批量执行（batching）的能力，可以将多个系统调用打包成一个transaction。
+
+最后，它提供了并发（concurrency）。
+
+### asynchronous
+首先是异步的系统调用。这表示系统调用修改完位于缓存中的block之后就返回，并不会触发写磁盘。所以这里明显的优势就是系统调用能够快速的返回。同时它也使得I/O可以并行的运行，也就是说应用程序可以调用一些文件系统的系统调用，但是应用程序可以很快从系统调用中返回并继续运算，与此同时文件系统在后台会并行的完成之前的系统调用所要求的写磁盘操作。这被称为 I/O concurrency.
+如果没有异步系统调用，很难获得I/O concurrency，或者说很难同时进行磁盘操作和应用程序运算，因为同步系统调用中，应用程序总是要等待磁盘操作结束才能从系统调用中返回。
+
+另一个异步系统调用带来的好处是，它使得大量的批量执行变得容易。
+
+异步系统调用的缺点是系统调用的返回并不能表示系统调用应该完成的工作实际完成了。
+举个例子，如果你创建了一个文件并写了一些数据然后关闭文件并在console向用户输出done，最后你把电脑的电给断了。尽管所有的系统调用都完成了，程序也输出了done，但是在你重启之后，你的数据并不一定存在。这意味着，在异步系统调用的世界里，如果应用程序关心可能发生的crash，那么应用程序代码应该更加的小心。这在XV6并不是什么大事，因为如果XV6中的write返回了，那么数据就在磁盘上，crash之后也还在。而ext3中，如果write返回了，你完全不能确定crash之后数据还在不在。
+
+所以一些应用程序的代码应该仔细编写，例如对于数据库，对于文本编辑器，我如果写了一个文件，我不想在我写文件过程断电然后再重启之后看到的是垃圾文件或者不完整的文件，我想看到的要么是旧的文件，要么是新的文件。
+
+#### fsync(flush)
+所以文件系统对于这类应用程序也提供了一些工具以确保在crash之后可以有预期的结果。这里的工具是一个系统调用，叫做fsync，所有的UNIX都有这个系统调用。这个系统调用接收一个文件描述符作为参数，它会告诉文件系统去完成所有的与该文件相关的写磁盘操作，在所有的数据都确认写入到磁盘之后，fsync才会返回。
+
+所以如果你查看数据库，文本编辑器或者一些非常关心文件数据的应用程序的源代码，你将会看到精心放置的对于fsync的调用。fsync可以帮助解决异步系统调用的问题。对于大部分程序，例如编译器，如果crash了编译器的输出丢失了其实没什么，所以许多程序并不会调用fsync，并且乐于获得异步系统调用带来的高性能。
+
+
+学生提问：这是不是有时也被称为flush，因为我之前经常听到这个单词？
+
+Robert教授：是的，一个合理的解释fsync的工作的方式是，它flush了所有文件相关的写磁盘操作到了磁盘中，之后再返回，所以flush也是针对这个场景的一个合理的单词。
+
+### batching
+在任何时候，ext3只会有一个open transaction。ext3中的一个transaction可以包含多个不同的系统调用。
+所以ext3是这么工作的：它首先会宣告要开始一个新的transaction，接下来的几秒所有的系统调用都是这个大的transaction的一部分。我认为默认情况下，ext3每5秒钟都会创建一个新的transaction，所以每个transaction都会包含5秒钟内的系统调用，这些系统调用都打包在一个transaction中。在5秒钟结束的时候，ext3会commit这个包含了可能有数百个更新的大transaction。
+
+为什么这是个好的方案呢？
+
+1. 首先它在多个系统调用之间分摊了transaction带来的固有的损耗。
+固有的损耗包括写transaction的descriptor block和commit block；在一个机械硬盘中需要查找log的位置并等待磁碟旋转，这些都是成本很高的操作，现在只需要对一批系统调用执行一次，而不用对每个系统调用执行一次这些操作，所以batching可以降低这些损耗带来的影响。
+
+2. 另外，它可以更容易触发write absorption。
+经常会有这样的情况，你有一堆系统调用最终在反复更新相同的一组磁盘block。举个例子，如果我创建了一些文件，我需要分配一些inode，inode或许都很小只有64个字节，一个block包含了很多个inode，所以同时创建一堆文件只会影响几个block的数据。类似的，如果我向一个文件写一堆数据，我需要申请大量的data block，我需要修改表示block空闲状态的bitmap block中的很多个bit位，如果我分配到的是相邻的data block，它们对应的bit会在同一个bitmap block中，所以我可能只是修改一个block的很多个bit位。所以一堆系统调用可能会反复更新一组相同的磁盘block。
+通过batching，多次更新同一组block会先快速的在内存的block cache中完成，之后在transaction结束时，一次性的写入磁盘的log中。这被称为write absorption，相比一个类似于XV6的同步文件系统，它可以极大的减少写磁盘的总时间
+
+3. 最后就是disk scheduling。
+   假设我们要向磁盘写1000个block，不论是在机械硬盘还是SSD（机械硬盘效果会更好），一次性的向磁盘的连续位置写入1000个block，要比分1000次每次写一个不同位置的磁盘block快得多。我们写log就是向磁盘的连续位置写block。通过向磁盘提交大批量的写操作，可以更加的高效。这里我们不仅通过向log中连续位置写入大量block来获得更高的效率，甚至当我们向文件系统分区写入包含在一个大的transaction中的多个更新时，如果我们能将大量的写请求同时发送到驱动，即使它们位于磁盘的不同位置，我们也使得磁盘可以调度这些写请求，并以特定的顺序执行这些写请求，这也很有效。在一个机械硬盘上，如果一次发送大量需要更新block的写请求，驱动可以对这些写请求根据轨道号排序。甚至在一个固态硬盘中，通过一次发送给硬盘大量的更新操作也可以稍微提升性能。所以，只有发送给驱动大量的写操作，才有可能获得disk scheduling。这是batching带来的另一个好处。
+
+
+### concurrency
+ext3使用的最后一个技术就是concurrency，相比XV6这里包含了两种concurrency。
+
+1. 首先ext3允许多个系统调用同时执行，所以我们可以有并行执行的多个不同的系统调用。
+   在ext3决定关闭并commit当前的transaction之前，系统调用不必等待其他的系统调用完成，它可以直接修改作为transaction一部分的block。许多个系统调用都可以并行的执行，并向当前transaction增加block，这在一个多核计算机上尤其重要，因为我们不会想要其他的CPU核在等待锁。
+在XV6中，如果当前的transaction还没有完成，新的系统调用不能继续执行。
+而在ext3中，大多数时候多个系统调用都可以更改当前正在进行的transaction。
+
+2. 另一种ext3提供的并发是，可以有多个不同状态的transaction同时存在。所以尽管只有一个open transaction可以接收系统调用，但是其他之前的transaction可以并行的写磁盘。这里可以并行存在的不同transaction状态包括了：
+- 首先是一个open transaction
+- 若干个正在commit到log的transaction，我们并不需要等待这些transaction结束。
+  当之前的transaction还没有commit并还在写log的过程中，新的系统调用仍然可以在当前的open transaction中进行。
+- 若干个正在从cache中向文件系统block写数据的transaction
+- 若干个正在被释放的transaction，这个并不占用太多的工作
+
+通常来说会有位于不同阶段的多个transaction，新的系统调用不必等待旧的transaction提交到log或者写入到文件系统。对比之下，XV6中新的系统调用就需要等待前一个transaction完全完成。
+
+
+学生提问：如果一个block cache正在被更新，而这个block又正在被写入到磁盘的过程中，会怎样呢？
+
+Robert教授：这的确会是一个问题，这里有个潜在的困难点，因为transaction写入到log中的内容只能包含由该transaction中的系统调用所做的更新，而不能包含在该transaction之后的系统调用的更新。因为如果这么做了的话，那么可能log中会只包含系统调用的部分更新，而我们需要确保transaction包含系统调用的所有更新。所以我们不能承担transaction包含任何在该transaction之后的更新的风险。
+
+ext3是这样解决这个问题的，当它决定结束当前的open transaction时，它会在内存中拷贝所有相关的block，之后transaction的commit是基于这些block的拷贝进行的。所以transaction会有属于自己的block的拷贝。为了保证这里的效率，操作系统会使用copy-on-write（注，详见8.4）来避免不必要的拷贝，这样只有当对应的block在后面的transaction中被更新了，它在内存中才会实际被拷贝。
+
+concurrency之所以能帮助提升性能，是因为它可以帮助我们并行的运行系统调用，我们可以得到多核的并行能力。如果我们可以在运行应用程序和系统调用的同时，来写磁盘，我们可以得到I/O concurrency，也就是同时运行CPU和磁盘I/O。这些都能帮助我们更有效，更精细的使用硬件资源。
+
+
+
+##  ext3文件系统调用格式
+
+```c
+// 在Linux的文件系统中，我们需要每个系统调用都声明一系列写操作的开始和结束。实际上在任何transaction系统中，都需要明确的表示开始和结束，这样之间的所有内容都是原子的。
+sys_unlink()
+
+// ext3需要知道当前正在进行的系统调用个数，所以每个系统调用在调用了start函数之后，会得到一个handle，它某种程度上唯一识别了当前系统调用。当前系统调用的所有写操作都是通过这个handle来识别跟踪的（注，handle是ext3 transaction中的一部分数据，详见16.3）。
+// 除非transaction中所有已经开始的系统调用都完成了，transaction是不能commit的。因为可能有多个transaction，文件系统需要有种方式能够记住系统调用属于哪个transaction，这样当系统调用结束时，文件系统就知道这是哪个transaction正在等待的系统调用，所以handle需要作为参数传递给stop函数。
+h= start()
+
+// 之后系统调用需要读写block，它可以通过get获取block在buffer中的缓存，同时告诉handle这个block需要被读或者被写。如果你需要更改多个block，类似的操作可能会执行多次。之后是修改位于缓存中的block。
+// 因为每个transaction都有一堆block与之关联，修改这些block就是transaction的一部分内容，所以我们将handle作为参数传递给get函数是为了告诉logging系统，这个block是handle对应的transaction的一部分。
+get(h, block#)
+
+modify blocks in cache
+
+// 当这个系统调用结束时，它会调用stop函数，并将handle作为参数传入。
+// stop函数并不会导致transaction的commit，它只是告诉logging系统，当前的transaction少了一个正在进行的系统调用。transaction只能在所有已经开始了的系统调用都执行了stop之后才能commit。所以transaction需要记住所有已经开始了的handle，这样才能在系统调用结束的时候做好记录。
+stop(h)
+```
+
+## ext3 transaction commit步骤
+基于上面的系统调用的结构，接下来我将介绍commit transaction完整的步骤。每隔5秒，文件系统都会commit当前的open transaction，下面是commit transaction涉及到的步骤：
+
+1. 首先需要阻止新的系统调用。当我们正在commit一个transaction时，我们不会想要有新增的系统调用，我们只会想要包含已经开始了的系统调用，所以我们需要阻止新的系统调用。这实际上会损害性能，因为在这段时间内系统调用需要等待并且不能执行。
+
+第二，需要等待包含在transaction中的已经开始了的系统调用们结束。所以我们需要等待transaction中未完成的系统调用完成，这样transaction能够反映所有的写操作。
+
+3. 一旦transaction中的所有系统调用都完成了，也就是完成了更新cache中的数据，那么就可以开始一个新的transaction，并且让在第一步中等待的系统调用继续执行。所以现在需要为后续的系统调用开始一个新的transaction。
+
+4. 还记得ext3中的log包含了descriptor，data和commit block吗？现在我们知道了transaction中包含的所有的系统调用所修改的block，因为系统调用在调用get函数时都将handle作为参数传入，表明了block对应哪个transaction。接下来我们可以更新descriptor block，其中包含了所有在transaction中被修改了的block编号。
+
+5. 我们还需要将被修改了的block，从缓存中写入到磁盘的log中。之前有同学问过，新的transaction可能会修改相同的block，所以在这个阶段，我们写入到磁盘log中的是transaction结束时，对于相关block cache的拷贝。所以这一阶段是将实际的block写入到log中。
+
+6. 接下来，我们需要等待前两步中的写log结束。
+
+7. 之后我们可以写入commit block。
+
+8. 接下来我们需要等待写commit block结束。结束之后，从技术上来说，当前transaction已经到达了commit point，也就是说transaction中的写操作可以保证在面对crash并重启时还是可见的。如果crash发生在写commit block之前，那么transaction中的写操作在crash并重启时会丢失。
+
+9. 接下来我们可以将transaction包含的block写入到文件系统中的实际位置。
+
+10. 在第9步中的所有写操作完成之后，我们才能重用transaction对应的那部分log空间。
+
+
+
 
 
 
@@ -1576,74 +2198,9 @@ ep\000\000\000\000\000\000\000\000\000\000\a\000init\000\000\000\000\000\000\000
 
 
 
-
-
 ### ialloc & Inode Layer
 
-what is ialloc() really doing?
-ialloc() finds a free on-disk inode, marks it allocated, writes that fact to disk transactionally, and returns an in-memory inode (struct inode *) that represents it.
-Returns an unlocked but allocated and referenced inode.
 
-
-
-
-To allocate a new inode (for example, when creating a file), xv6 calls `ialloc` (kernel/fs.c:196).
-Ialloc is similar to `balloc`: it loops over the inode structures on the disk, one block at a time,
-looking for one that is marked free. 
-When it finds one, it claims it by writing the new type to the disk and then returns an entry from the inode table with the tail call to `iget` (kernel/fs.c:210). 
-
-The correct operation of ialloc depends on the fact that only one process at a time can be holding a reference to `bp`: 
-ialloc can be sure that some other process does not simultaneously see that the inode is available and try to claim it.
-
-
-```c
-// Allocate an inode on device dev.
-// Mark it as allocated by  giving it type type.
-// Returns an unlocked but allocated and referenced inode.
-struct inode*
-ialloc(uint dev, short type)
-{
-  int inum;
-  struct buf *bp;
-  struct dinode *dip;
-
-  // 1. Scan all inodes (yes, linearly)
-  // Inode numbers start at 1
-  // inum == 0 is reserved / invalid
-  for(inum = 1; inum < sb.ninodes; inum++){
-    // 2. Read the disk block that contains inode inum
-    // IBLOCK(inum, sb) tells you which disk block contains this inode
-    // bread() pulls that block into the buffer cache
-    bp = bread(dev, IBLOCK(inum, sb));
-
-    // 3. Locate the exact struct dinode inside the block
-    // (struct dinode*)bp->data:  treat block data as an array of struct dinode
-    // inum % IPB : index of the inode within this block
-    // dip points to the on-disk inode
-    dip = (struct dinode*)bp->data + inum%IPB;
-
-    // 4️. Is this inode free?
-    if(dip->type == 0){  // a free inode
-      // 5. Zero it and claim it
-      memset(dip, 0, sizeof(*dip));
-      // this is the moment of allocation
-      dip->type = type;
-      
-      //6. Write the change transactionally
-      log_write(bp);   // mark it allocated on the disk
-
-      // 7. Release the buffer cache entry
-      brelse(bp);
-
-      // 8. Return an in-memory inode
-      return iget(dev, inum);
-    }
-    brelse(bp);
-  }
-  panic("ialloc: no inodes");
-}
-```
-ialloc() scans the on-disk inode table, finds a free dinode, marks it allocated inside a log transaction, and returns the corresponding in-memory inode.
 
 
 
@@ -1747,121 +2304,9 @@ Frans教授：是的，可以这么认为，文件系统中的所有bwrite都需
 
 ### iget
 
-what is iget() for?
-iget(dev, inum) returns the unique in-memory representative of “inode number inum on device dev”.
 
-Iget (kernel/fs.c:243) looks through the inode table for an active entry (`ip->ref > 0`) with
-the desired device and inode number. 
-If it finds one, it returns a new reference to that inode (kernel/fs.c:252-256). 
-As iget scans, it records the position of the first empty slot (kernel/fs.c:257-258), which it uses if it needs to allocate a table entry.
-
-
-iget():
-- finds or creates a struct inode in the inode cache (icache)
-- increments its reference count
-- returns it unlocked
-
-Invariant xv6 wants to maintain:
-For any (dev, inum), there is at most one struct inode in memory.
-
-iget() enforces that invariant.
-
-
-```c
-// Find the inode with number inum on device dev
-// and return the in-memory copy. Does not lock
-// the inode and does not read it from disk.
-static struct inode*
-iget(uint dev, uint inum)
-{
-  struct inode *ip, *empty;
-  // 1.Lock the inode cache
-  acquire(&icache.lock);
-
-  // 2. Scan the cache
-  // Is the inode already cached?
-  empty = 0;
-  for(ip = &icache.inode[0]; ip < &icache.inode[NINODE]; ip++){
-    // Case A: inode already cached
-    // ref > 0 → slot is in use
-    // (dev, inum) uniquely identifies a disk inode
-    // Increment ref → another user now holds it
-    
-    if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){
-      // Notice: No disk access, No locking of the inode itself, Just reference counting
-      // This is why:  two processes opening the same file, end up sharing the same struct inode
-      ip->ref++;
-      release(&icache.lock);
-      return ip;
-    }
-    // First, try to find the inode.
-    // Only if it doesn’t exist, reuse an empty slot.
-    if(empty == 0 && ip->ref == 0)    // Remember empty slot.
-      empty = ip;
-  }
-
-  // Case B: inode not cached → recycle a slot
-  // Recycle an inode cache entry.
-  if(empty == 0)
-    panic("iget: no inodes");
-
-  //Initialize the new cache entry
-  ip = empty;
-  ip->dev = dev;
-  ip->inum = inum;
-  ip->ref = 1;
-  ip->valid = 0;  //“I haven’t read the on-disk inode yet.”
-
-  // Release cache lock and return
-  release(&icache.lock);
-  // At this point:
-  // You have a struct inode *
-  // It is referenced
-  // It is not locked
-  // It is possibly invalid
-  return ip;
-}
-```
-
-iget() ensures there is exactly one in-memory inode per (dev, inum), bumps its reference count, and postpones all real work until ilock().
-
-
-Q: Why iget() does not lock the inode
-Because locking implies sleeping, and:
-- iget() is often called while holding other locks
-- sleeping here would invite deadlocks
-
-Instead, xv6 uses a two-phase protocol:
-- iget() → identity + refcount
-- ilock() → data + disk I/O
-
-You’ll often see this pattern:
-
-```c
-ip = iget(dev, inum);
-ilock(ip);
-
-```
-That separation is one of xv6’s cleanest design choices.
-
-Q: Why iget() does not read from disk
-Because:
-- not every inode access needs disk data
-- path traversal needs identity before data
-- caching works best when reads are delayed
 
 #### ilock
-Disk reads happen in ilock():
-```c
-if(ip->valid == 0)
-  read dinode from disk
-```
-xv6 does:
-- read the dinode from disk
-- copy it into inode
-- set valid = 1
-
-
 
 ```bash
 (gdb) p *ip
@@ -2374,6 +2819,19 @@ The buffer cache uses a per-buffer sleep-lock to ensure that only one thread at 
 
 首先看一下 bread函数
 bread函数首先会调用bget函数，bget会为我们从buffer cache中找到block的缓存。让我们看一下bget函数
+遍历了linked-list，来看看现有的cache是否符合要找的block。
+是的，我们这里看一下block 33的cache是否存在，如果存在的话，将block对象的引用计数（refcnt）加1，之后再释放bcache锁，因为现在我们已经完成了对于cache的检查并找到了block cache。之后，代码会尝试获取block cache的锁。
+
+### What bread() really does ？
+
+- inds (or allocates) a struct buf
+- Increments refcnt
+- Acquires the buffer’s sleep lock
+- Ensures block data is in memory
+
+So after bread()，That buffer is now pinned.
+
+
 ```c
 // Return a locked buf with the contents of the indicated block.
 struct buf*
@@ -2448,8 +2906,129 @@ bget(uint dev, uint blockno)
 
 
 ```
-遍历了linked-list，来看看现有的cache是否符合要找的block。
-是的，我们这里看一下block 33的cache是否存在，如果存在的话，将block对象的引用计数（refcnt）加1，之后再释放bcache锁，因为现在我们已经完成了对于cache的检查并找到了block cache。之后，代码会尝试获取block cache的锁。
+
+## brelse
+
+### What brelse() means conceptually ?
+Calling brelse(b) means:
+“I’m done — if nobody else needs me, remember me as recently useful, but feel free to reuse me later.”
+
+- Releases the buffer’s sleep lock
+- Decrements refcnt
+- Allows eviction when refcnt == 0
+
+The LRU position is updated in brelse()
+
+以上就是对于 block cache 代码的介绍。这里有几件事情需要注意：
+1. 首先在内存中，对于一个block只能有一份缓存。这是block cache必须维护的特性。
+2. 其次，这里使用了与之前的spinlock略微不同的sleep lock。
+   与spinlock不同的是，可以在I/O操作的过程中持有sleep lock。
+3. 采用了LRU作为cache替换策略。
+4. 它有两层锁。第一层锁用来保护buffer cache的内部数据；第二层锁也就是sleep lock用来保护单个block的cache。
+
+
+
+```c
+// Release a locked buffer.
+// Move to the head of the most-recently-used list.
+void
+brelse(struct buf *b)
+{
+  //First rule: you must own the buffer
+  //If you touch b->data, you must hold b->lock.
+  //If you release a buffer, you must still hold that lock.
+  //Because otherwise:
+  // One thread could still be modifying the buffer
+  // Another thread could recycle it
+  // Silent data corruption follows
+
+  if(!holdingsleep(&b->lock))
+    panic("brelse");
+  
+  // Release the buffer’s lock first
+  // This allows:
+  // Other threads waiting on this block to proceed
+  // Disk I/O to continue elsewhere
+  releasesleep(&b->lock);
+
+  acquire(&bcache.lock);
+  // you’re done touching the data,  you update cache metadata
+  // LRU update is structural → spinlock
+
+  b->refcnt--;
+
+
+  // A buffer becomes “recently used” when the last user finishes with it.
+  // LRU only matters for eviction, not for active use
+  if (b->refcnt == 0) {
+    // A buffer becomes unused
+    // refcnt == 0: buffer is now free， no one is waiting for it.
+    // How the LRU move actually works
+    // 1: unlink b from current position
+    // This removes b from wherever it currently is in the list.
+    b->next->prev = b->prev;
+    b->prev->next = b->next;
+
+    // 2: insert b at the MRU position,which means right after head.
+    // head.next  → most recently used (MRU)
+    // head.prev  → least recently used (LRU)
+
+    // Before insertion, the list looks like this:
+    // head <-> A <-> ...
+    // After insertion, the list looks like this:
+    // head <-> b <-> A <-> old_MRU <-> ...
+    
+    // That means four pointer relationships must be correct:
+    // b.next == A
+    // b.prev == &head
+    // A.prev == b
+    // head.next == b
+
+    b->next = bcache.head.next;
+    b->prev = &bcache.head;
+    bcache.head.next->prev = b;
+    bcache.head.next = b;
+  }
+  
+  release(&bcache.lock);
+}
+```
+
+
+
+### Why must you brelse() every block that you bread()?
+Because bread() pins a buffer cache entry.
+If you don’t brelse(), the system will eventually deadlock or panic
+
+What happens if you forget brelse()?
+Failure modes
+1. buffer cache exhaustion
+- bmap() runs during writes
+- bmap() may bread():
+  - indirect block
+  - double-indirect block
+  - second-level indirect block
+  
+If you forget to brelse() even one:
+Eventually: all buffers have refcnt > 0
+Then:  panic("bget: no buffers");
+
+2.  deadlock
+Another process tries to: bread(dev, same_block)
+But:
+- buffer is still locked
+- lock is a sleep lock
+- process sleeps forever
+
+
+Why this is especially critical in bmap()
+
+bmap():
+- runs inside filesystem transactions
+- runs under inode locks
+- may be called hundreds of times during bigfile
+If buffers leak here, xv6 dies fast.
+
 
 ## 多个进程同时调用 bget
 
@@ -2654,92 +3233,6 @@ No CPU is wasted while waiting.
 
 It is safe for bget to acquire the buffer’s sleep-lock outside of the `bcache.lock` critical section, since the non-zero `b->refcnt` prevents the buffer from being re-used for a different disk block. 
 The sleep-lock protects reads and writes of the block’s buffered content, while the bcache.lock protects information about which blocks are cached.
-
-## brelse
-
-What brelse() means conceptually ?
-Calling brelse(b) means:
-“I’m done — if nobody else needs me, remember me as recently useful, but feel free to reuse me later.”
-
-The LRU position is updated in brelse()
-
-
-```c
-// Release a locked buffer.
-// Move to the head of the most-recently-used list.
-void
-brelse(struct buf *b)
-{
-  //First rule: you must own the buffer
-  //If you touch b->data, you must hold b->lock.
-  //If you release a buffer, you must still hold that lock.
-  //Because otherwise:
-  // One thread could still be modifying the buffer
-  // Another thread could recycle it
-  // Silent data corruption follows
-
-  if(!holdingsleep(&b->lock))
-    panic("brelse");
-  
-  // Release the buffer’s lock first
-  // This allows:
-  // Other threads waiting on this block to proceed
-  // Disk I/O to continue elsewhere
-  releasesleep(&b->lock);
-
-  acquire(&bcache.lock);
-  // you’re done touching the data,  you update cache metadata
-  // LRU update is structural → spinlock
-
-  b->refcnt--;
-
-
-  // A buffer becomes “recently used” when the last user finishes with it.
-  // LRU only matters for eviction, not for active use
-  if (b->refcnt == 0) {
-    // A buffer becomes unused
-    // refcnt == 0: buffer is now free， no one is waiting for it.
-    // How the LRU move actually works
-    // 1: unlink b from current position
-    // This removes b from wherever it currently is in the list.
-    b->next->prev = b->prev;
-    b->prev->next = b->next;
-
-    // 2: insert b at the MRU position,which means right after head.
-    // head.next  → most recently used (MRU)
-    // head.prev  → least recently used (LRU)
-
-    // Before insertion, the list looks like this:
-    // head <-> A <-> ...
-    // After insertion, the list looks like this:
-    // head <-> b <-> A <-> old_MRU <-> ...
-    
-    // That means four pointer relationships must be correct:
-    // b.next == A
-    // b.prev == &head
-    // A.prev == b
-    // head.next == b
-
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
-  }
-  
-  release(&bcache.lock);
-}
-```
-
-以上就是对于 block cache 代码的介绍。这里有几件事情需要注意：
-1. 首先在内存中，对于一个block只能有一份缓存。这是block cache必须维护的特性。
-2. 其次，这里使用了与之前的spinlock略微不同的sleep lock。
-   与spinlock不同的是，可以在I/O操作的过程中持有sleep lock。
-3. 采用了LRU作为cache替换策略。
-4. 它有两层锁。第一层锁用来保护buffer cache的内部数据；第二层锁也就是sleep lock用来保护单个block的cache。
-
-
-
-
 
 
 # Directory layer 
@@ -2974,3 +3467,36 @@ provides hierarchical path names like /usr/rtm/xv6/fs.c, and resolves them with 
 # File descriptor Layer 
 
 abstracts many Unix resources (e.g., pipes, devices, files, etc.) using the file system interface, simplifying the lives of application programmers.
+
+
+# System calls
+With the functions that the lower layers provide the implementation of most system calls is trivial
+(see (kernel/sysfile.c)). There are a few calls that deserve a closer look.
+
+## sys_link &  sys_unlink
+The functions `sys_link` and `sys_unlink` edit directories, creating or removing references to inodes. 
+They are another good example of the power of using transactions. 
+
+`Sys_link (kernel/sysfile.c:120)` begins by fetching its arguments, two strings old and new (kernel/sysfile.c:125). Assuming old exists and is not a directory (kernel/sysfile.c:129-132), `sys_link` increments its ip->nlink count. 
+Then sys_link calls `nameiparent` to find the parent directory and final path element of new (kernel/sysfile.c:145) and creates a new directory entry pointing at old ’s inode (kernel/sysfile.c:148). The new parent directory must exist and be on the same device as the existing inode: inode numbers only have a unique meaning on a single disk. 
+If an error like this occurs, sys_link must go back and decrement ip->nlink.
+
+Transactions simplify the implementation because it requires updating multiple disk blocks, but we don’t have to worry about the order in which we do them. They either will all succeed or none. 
+For example, without transactions, updating `ip->nlink` before creating a link, would put the file system temporarily in an unsafe state, and a crash in between could result in havoc.  With transactions we don’t have to worry about this.
+
+
+Sys_link creates a new name for an existing inode. 
+- The function `create` (kernel/sysfile.c:242) creates a new name for a new inode. It is a generalization of the three file creation system calls: open with the O_CREATE flag makes a new ordinary file, 
+- `mkdir` makes a new directory, 
+- `mkdev` makes a new device file. 
+Like sys_link, `create` starts by calling `nameiparent` to get the inode of the parent directory. It then calls `dirlookup` to check whether the name already exists (kernel/sysfile.c:252). 
+If the name does exist, `create`’s behavior depends on which system call it is being used for: `open` has different semantics from `mkdir` and `mkdev`. If create is being used on behalf of open (type == T_FILE) and the name that exists is itself a regular file, then open treats that as a success, so create does too (kernel/sysfile.c:256). 
+Otherwise, it is an error (kernel/sysfile.c:257-258). If the name does not already exist, `create` now allocates a new inode with `ialloc` (kernel/sysfile.c:261). If the new inode is a directory, create initializes it with . and .. entries. 
+Finally, now that the data is initialized properly, create can link it into the parent directory (kernel/sysfile.c:274). 
+Create, like sys_link, holds two inode locks simultaneously: ip and dp. There is no possibility of deadlock because the inode ip is freshly allocated: no other process in the system will hold ip ’s lock and then try to lock dp.
+
+## sys_pipe
+Chapter 7 examined the implementation of pipes before we even had a file system. The function
+sys_pipe connects that implementation to the file system by providing a way to create a pipe pair.
+Its argument is a pointer to space for two integers, where it will record the two new file descriptors.
+Then it allocates the pipe and installs the file descriptors.
